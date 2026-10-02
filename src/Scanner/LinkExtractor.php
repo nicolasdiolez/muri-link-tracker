@@ -83,6 +83,13 @@ class LinkExtractor {
 
 		// Parse custom fields if enabled.
 		$custom_fields = $settings['scan_custom_fields'] ?? array();
+		if ( true === $custom_fields ) {
+			$custom_fields = array_filter(
+				\get_post_custom_keys( $post->ID ) ?? array(),
+				static fn( string $key ): bool => ! \is_protected_meta( $key, 'post' )
+			);
+		}
+		$custom_fields = is_array( $custom_fields ) ? $custom_fields : array();
 		if ( ! empty( $custom_fields ) ) {
 			foreach ( $custom_fields as $field ) {
 				$value = \get_post_meta( $post->ID, $field, true );
@@ -137,6 +144,9 @@ class LinkExtractor {
 		$grouped = array();
 
 		foreach ( $results as $result ) {
+			if ( UrlExclusions::matches( $result->url, $settings['excluded_urls'] ?? array() ) ) {
+				continue;
+			}
 			$url_hash = self::hash_url( $result->url );
 
 			// Check for media exclusion if enabled.

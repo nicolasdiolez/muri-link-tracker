@@ -1,11 +1,5 @@
 <?php
-/**
- * Batch orchestrator for scan and check workflows.
- *
- * @package MuriLinkTracker
- * @since   1.0.0
- */
-
+/** Server-driven scan lifecycle with durable jobs. */
 declare( strict_types=1 );
 
 namespace MuriLinkTracker\Queue;
@@ -15,522 +9,243 @@ defined( 'ABSPATH' ) || exit;
 use MuriLinkTracker\Database\InstancesRepository;
 use MuriLinkTracker\Database\LinksRepository;
 
-/**
- * Orchestrates the creation and management of scan and check batches.
- *
- * Splits work into batches, stores them as transients, and enqueues
- * Action Scheduler actions for each batch.
- *
- * @since 1.0.0
- */
 class BatchOrchestrator {
 
-	/**
-	 * Maximum number of links per check batch.
-	 *
-	 * Kept small because each check involves an HTTP request with delay.
-	 *
-	 * @since 1.0.0
-	 * @var int
-	 */
-	private const MAX_CHECK_BATCH_SIZE = 20;
+	private readonly ScanStore $store;
 
-	/**
-	 * Constructor.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param LinksRepository     $links_repo     Links CRUD repository.
-	 * @param InstancesRepository $instances_repo Instances CRUD repository.
-	 */
 	public function __construct(
 		private readonly LinksRepository $links_repo,
 		private readonly InstancesRepository $instances_repo,
-	) {}
+		?ScanStore $store = null,
+	) {
+		global $wpdb;
+		$this->store = $store ?? new ScanStore( $wpdb );
+	}
 
-	/**
-	 * Starts a scan: queries all scannable posts and creates scan batches.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param string $scan_type 'full' or 'delta' (delta = only modified since last scan).
-	 * @return int Number of batches created.
-	 */
 	public function start_scan( string $scan_type = 'full' ): int {
-		$post_ids   = $this->get_scannable_post_ids( $scan_type );
-		$batch_size = $this->calculate_batch_size();
-
-		/**
-		 * Filters the number of posts per scan batch.
-		 *
-		 * @since 1.0.0
-		 *
-		 * @param int $batch_size Calculated batch size.
-		 */
-		$batch_size = (int) apply_filters( 'mltr/scanner/batch_size', $batch_size );
-
-		// Initialize scan status.
-		set_transient(
-			'mltr_scan_status',
-			array(
-				'status'         => 'running',
-				'phase'          => 'scanning',
-				'scan_type'      => $scan_type,
-				'total_posts'    => count( $post_ids ),
-				'scanned_posts'  => 0,
-				'total_links'    => 0,
-				'checked_links'  => 0,
-				'broken_count'   => 0,
-				'redirect_count' => 0,
-				'started_at'     => gmdate( 'c' ),
-				'scan_batches'   => array(),
-				'check_batches'  => array(),
-			),
-			HOUR_IN_SECONDS
-		);
-
-		$batch_count = $this->create_and_enqueue_scan_batches( $post_ids, $batch_size );
-
-		return $batch_count;
-	}
-
-	/**
-	 * Creates check batches for all links with status 'pending'.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @return int Number of batches created.
-	 */
-	public function start_check(): int {
-		$links    = $this->links_repo->find_pending_or_stale( PHP_INT_MAX, 0 );
-		$link_ids = array_map( fn( $link ) => $link->id, $links );
-		$chunks   = array_chunk( $link_ids, self::MAX_CHECK_BATCH_SIZE );
-
-		// Update scan status with total links and batches.
-		$status = get_transient( 'mltr_scan_status' );
-		if ( is_array( $status ) ) {
-			$status['total_links']   = count( $link_ids );
-			$status['check_batches'] = $chunks;
-			set_transient( 'mltr_scan_status', $status, HOUR_IN_SECONDS );
+		if ( ! SchedulerBootstrap::is_available() ) {
+			throw new \RuntimeException( 'Action Scheduler is not available.' );
 		}
-
-		return $this->enqueue_check_batches( $chunks );
+		if ( ! in_array( $scan_type, array( 'full', 'delta' ), true ) ) {
+			throw new \InvalidArgumentException( 'Invalid scan type.' );
+		}
+		$run = $this->store->exclusive( function () use ( $scan_type ): array {
+			$current = $this->store->current_run();
+			if ( null !== $current && 'running' === $current['status'] ) {
+				throw new \RuntimeException( 'A scan is already in progress.' );
+			}
+			return $this->store->create_run( $scan_type, 'scanning' );
+		} );
+		if ( 0 === SchedulerBootstrap::enqueue_coordinator( $run['id'] ) ) {
+			$this->store->update_run( $run['id'], array( 'status' => 'error', 'error_message' => 'The scan could not be queued. Please resume it.' ) );
+			throw new \RuntimeException( 'The scan could not be queued. Please resume it.' );
+		}
+		return 1;
 	}
 
-	/**
-	 * Handles the daily recheck of stale links.
-	 *
-	 * Called by the RECHECK_DAILY_HOOK recurring action.
-	 *
-	 * @since 1.0.0
-	 */
+	/** Plan bounded batches and advance only after THIS run's jobs actually finish. */
+	public function advance( string $scan_id ): void {
+		try {
+			$keep_planning = $this->store->exclusive( function () use ( $scan_id ): bool {
+				if ( ! $this->store->is_active( $scan_id ) ) {
+					return false;
+				}
+				$this->store->recover_expired( $scan_id );
+				$run = $this->store->find_run( $scan_id );
+				if ( null === $run ) {
+					return false;
+				}
+				if ( ! (bool) $run['planning_done'] ) {
+					$this->store->transaction( fn() => $this->plan_page( $run ) );
+					$run = $this->store->find_run( $scan_id );
+				}
+				$work = $this->store->work_state( $scan_id, $run['phase'] );
+				if ( $work['failed'] ) {
+					$this->store->update_run( $scan_id, array( 'status' => 'error', 'error_message' => 'A scan job failed after three attempts. Resume to retry the remaining work.' ) );
+					return false;
+				}
+				if ( ! (bool) $run['planning_done'] ) {
+					return true;
+				}
+				if ( $work['unfinished'] ) {
+					return false;
+				}
+				if ( 'scanning' === $run['phase'] ) {
+					$this->instances_repo->cleanup_unpublished();
+					$this->links_repo->cleanup_orphans();
+					$this->store->update_run( $scan_id, array( 'phase' => 'checking', 'planning_done' => 0 ) );
+					delete_transient( 'mltr_stats_cache' );
+					return true;
+				}
+				$this->store->update_run( $scan_id, array( 'status' => 'complete', 'finished_at' => gmdate( 'Y-m-d H:i:s' ), 'error_message' => null ) );
+				if ( 'recheck' !== $run['scan_type'] ) {
+					update_option( 'mltr_last_scan_date', $run['started_at'], false );
+				}
+				delete_transient( 'mltr_stats_cache' );
+				do_action( 'mltr/scan/complete', $scan_id );
+				return false;
+			} );
+			$this->dispatch_pending( $scan_id );
+			if ( $keep_planning ) {
+				if ( 0 === SchedulerBootstrap::enqueue_coordinator( $scan_id ) ) {
+					throw new \RuntimeException( 'The next scan planning step could not be queued.' );
+				}
+			}
+		} catch ( QueueBusyException ) {
+			SchedulerBootstrap::enqueue_coordinator( $scan_id, 5 );
+		} catch ( \Throwable $error ) {
+			// Report planning/enqueue failures instead of silently leaving a healthy-looking run.
+			try {
+				$this->store->exclusive( function () use ( $scan_id, $error ): void {
+					if ( $this->store->is_active( $scan_id ) ) {
+						$this->store->update_run( $scan_id, array( 'status' => 'error', 'error_message' => 'Scan planning failed. Resume to retry. ' . substr( $error->getMessage(), 0, 500 ) ) );
+					}
+				} );
+			} catch ( \Throwable ) {
+				// A database outage is also reported to Action Scheduler; the watchdog can recover.
+			}
+			if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+				error_log( '[MuriLinkTracker] Coordinator: ' . $error->getMessage() );
+			}
+			throw $error;
+		}
+	}
+
+	private function plan_page( array $run ): void {
+		$settings = get_option( 'mltr_settings', array() );
+		if ( 'scanning' === $run['phase'] ) {
+			$size = max( 10, min( 200, (int) ( $settings['batch_size'] ?? 50 ) ) );
+			$size = max( 1, min( 200, (int) apply_filters( 'mltr/scanner/batch_size', $size ) ) );
+			$types = array_values( array_filter( (array) ( $settings['scan_post_types'] ?? array( 'post', 'page' ) ), 'is_string' ) );
+			$ids = $this->store->next_post_ids( $run, $types, $size );
+			if ( $ids ) {
+				$this->store->create_job( $run['id'], 'scanning', $ids );
+			}
+			$this->store->update_run( $run['id'], array( 'scan_cursor' => $ids ? max( $ids ) : (int) $run['scan_cursor'], 'planning_done' => count( $ids ) < $size ? 1 : 0 ) );
+		} else {
+			$days = max( 1, (int) ( $settings['recheck_interval'] ?? 7 ) );
+			$ids = $this->links_repo->find_check_ids_after( (int) $run['check_cursor'], 100, $days, 'full' === $run['scan_type'] );
+			// One HTTP URL per action keeps even slow hosts from monopolizing a worker.
+			foreach ( $ids as $id ) {
+				$this->store->create_job( $run['id'], 'checking', array( $id ) );
+			}
+			$this->store->update_run( $run['id'], array( 'check_cursor' => $ids ? max( $ids ) : (int) $run['check_cursor'], 'planning_done' => count( $ids ) < 100 ? 1 : 0 ) );
+		}
+	}
+
+	private function dispatch_pending( string $scan_id ): void {
+		if ( ! $this->store->is_active( $scan_id ) ) {
+			return;
+		}
+		foreach ( $this->store->pending_jobs( $scan_id ) as $job ) {
+			if ( 0 === SchedulerBootstrap::enqueue_job( (int) $job['id'], $job['phase'] ) ) {
+				throw new \RuntimeException( 'A scan job could not be queued.' );
+			}
+		}
+	}
+
+	/** A real recurring action recovers killed workers and failed enqueue attempts. */
+	public function watchdog(): void {
+		$run = $this->store->current_run();
+		if ( null !== $run && 'running' === $run['status'] ) {
+			$this->advance( $run['id'] );
+		}
+	}
+
 	public function recheck_stale_links(): void {
-		$settings     = get_option( 'mltr_settings', array() );
-		$recheck_days = (int) ( $settings['recheck_interval'] ?? 7 );
-		$batch_size   = (int) ( $settings['batch_size'] ?? 50 );
-
-		$links    = $this->links_repo->find_pending_or_stale( $batch_size * 5, $recheck_days );
-		$link_ids = array_map( fn( $link ) => $link->id, $links );
-
-		if ( ! empty( $link_ids ) ) {
-			$this->create_and_enqueue_check_batches( $link_ids );
+		$run = $this->store->exclusive( function (): ?array {
+			$current = $this->store->current_run();
+			if ( null !== $current && in_array( $current['status'], array( 'running', 'cancelled', 'error' ), true ) ) {
+				return null;
+			}
+			return $this->store->create_run( 'recheck', 'checking' );
+		} );
+		if ( null !== $run ) {
+			SchedulerBootstrap::enqueue_coordinator( $run['id'] );
 		}
 	}
 
-	/**
-	 * Cancels the current scan/check.
-	 *
-	 * @since 1.0.0
-	 */
+	public function cleanup(): void {
+		$this->store->exclusive( function (): void {
+			$this->instances_repo->cleanup_unpublished();
+			$this->links_repo->cleanup_orphans();
+			$this->store->prune();
+			delete_transient( 'mltr_stats_cache' );
+		} );
+	}
+
 	public function cancel(): void {
-		SchedulerBootstrap::cancel_all();
-
-		$status = get_transient( 'mltr_scan_status' );
-		if ( is_array( $status ) ) {
-			$status['status'] = 'cancelled';
-			set_transient( 'mltr_scan_status', $status, HOUR_IN_SECONDS );
-		}
+		$this->store->exclusive( function (): void {
+			$run = $this->store->current_run();
+			if ( null !== $run && in_array( $run['status'], array( 'running', 'error' ), true ) ) {
+				$this->store->update_run( $run['id'], array( 'status' => 'cancelled' ) );
+			}
+		} );
 	}
 
-	/**
-	 * Resets all scan data: cancels jobs and truncates tables.
-	 *
-	 * @since 1.0.0
-	 */
+	/** Workers revalidate their token inside this same lock before any database write. */
 	public function reset(): void {
-		$this->cancel();
-
-		$this->instances_repo->truncate();
-		$this->links_repo->truncate();
-
-		delete_transient( 'mltr_scan_status' );
-		delete_option( 'mltr_last_scan_date' );
+		$this->store->exclusive( function (): void {
+			$run = $this->store->current_run();
+			if ( null !== $run ) {
+				$this->store->update_run( $run['id'], array( 'status' => 'cancelled' ) );
+			}
+			$this->store->invalidate_manual_checks();
+			$this->instances_repo->truncate();
+			$this->links_repo->truncate();
+			$this->store->delete_runs();
+			delete_option( 'mltr_last_scan_date' );
+			delete_transient( 'mltr_scan_status' );
+			delete_transient( 'mltr_stats_cache' );
+		} );
 	}
 
-	/**
-	 * Resumes a cancelled or interrupted scan.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @return bool True if scan was resumed.
-	 */
 	public function resume(): bool {
-		$status = get_transient( 'mltr_scan_status' );
-		if ( ! is_array( $status ) || 'cancelled' !== $status['status'] ) {
+		$scan_id = $this->store->exclusive( function (): ?string {
+			$run = $this->store->current_run();
+			if ( null === $run || ! in_array( $run['status'], array( 'cancelled', 'error' ), true ) ) {
+				return null;
+			}
+			// Revoke old worker tokens before making the run active again.
+			$this->store->resume_jobs( $run['id'] );
+			$this->store->update_run( $run['id'], array( 'status' => 'running', 'error_message' => null ) );
+			return $run['id'];
+		} );
+		if ( null === $scan_id ) {
 			return false;
 		}
-
-		$status['status'] = 'running';
-		set_transient( 'mltr_scan_status', $status, HOUR_IN_SECONDS );
-
-		if ( 'scanning' === $status['phase'] ) {
-			foreach ( $status['scan_batches'] as $batch_id ) {
-				SchedulerBootstrap::enqueue_scan_batch( $batch_id );
-			}
-		} elseif ( 'checking' === $status['phase'] ) {
-			$this->enqueue_check_batches( $status['check_batches'] );
-		}
-
+		SchedulerBootstrap::enqueue_coordinator( $scan_id );
 		return true;
 	}
 
-	/**
-	 * Removes a scan batch from the tracking list.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param string $batch_id Batch identifier.
-	 */
-	public function remove_scan_batch( string $batch_id ): void {
-		$status = get_transient( 'mltr_scan_status' );
-		if ( is_array( $status ) && isset( $status['scan_batches'] ) ) {
-			$status['scan_batches'] = array_values( array_diff( $status['scan_batches'], array( $batch_id ) ) );
-			set_transient( 'mltr_scan_status', $status, HOUR_IN_SECONDS );
-		}
-	}
-
-	/**
-	 * Removes a check batch from the tracking list.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param int[] $link_ids Link IDs that were in the batch.
-	 */
-	public function remove_check_batch( array $link_ids ): void {
-		$status = get_transient( 'mltr_scan_status' );
-		if ( is_array( $status ) && isset( $status['check_batches'] ) ) {
-			foreach ( $status['check_batches'] as $index => $chunk ) {
-				// We compare the arrays to find the batch that just finished.
-				if ( $chunk === $link_ids ) {
-					unset( $status['check_batches'][ $index ] );
-					$status['check_batches'] = array_values( $status['check_batches'] );
-					break;
-				}
-			}
-			set_transient( 'mltr_scan_status', $status, HOUR_IN_SECONDS );
-		}
-	}
-
-	/**
-	 * Handles a check batch being split into a smaller one due to resource limits.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param int[] $old_link_ids Original batch link IDs.
-	 * @param int[] $new_link_ids Remaining link IDs.
-	 */
-	public function handle_check_batch_split( array $old_link_ids, array $new_link_ids ): void {
-		$status = get_transient( 'mltr_scan_status' );
-		if ( is_array( $status ) && isset( $status['check_batches'] ) ) {
-			foreach ( $status['check_batches'] as $index => $chunk ) {
-				if ( $chunk === $old_link_ids ) {
-					$status['check_batches'][ $index ] = $new_link_ids;
-					break;
-				}
-			}
-			set_transient( 'mltr_scan_status', $status, HOUR_IN_SECONDS );
-		}
-	}
-
-	/**
-	 * Adds a check batch to the tracking list (used during re-enqueueing).
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param int[] $link_ids Link IDs in the new batch.
-	 */
-	public function add_check_batch( array $link_ids ): void {
-		$status = get_transient( 'mltr_scan_status' );
-		if ( is_array( $status ) && isset( $status['check_batches'] ) ) {
-			$status['check_batches'][] = $link_ids;
-			set_transient( 'mltr_scan_status', $status, HOUR_IN_SECONDS );
-		}
-	}
-
-	/**
-	 * Returns the current scan status.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @return array{status: string, total_posts: int, scanned_posts: int, total_links: int, checked_links: int, broken_count: int, redirect_count: int, started_at: string|null}
-	 */
+	/** A read endpoint never runs jobs or advances the state machine. */
 	public function get_status(): array {
-		$status = get_transient( 'mltr_scan_status' );
-
-		if ( ! is_array( $status ) ) {
-			return $this->get_idle_status();
-		}
-
-		if ( 'running' !== $status['status'] ) {
-			$stats = $this->get_cached_stats();
-			return array_merge( $status, array(
-				'total_links'    => $stats['total'],
-				'ok_count'       => $stats['ok_count'],
-				'broken_count'   => $stats['broken_count'],
-				'redirect_count' => $stats['single_redirect_count'] + $stats['chain_redirect_count'],
-			) );
-		}
-
-		// Nudge the AS queue runner on every status poll.
-		SchedulerBootstrap::maybe_run_queue();
-
-		$phase         = $status['phase'] ?? 'scanning';
-		$pending_count = SchedulerBootstrap::get_pending_count();
-
-		if ( 'scanning' === $phase && 0 === $pending_count ) {
-			// Prevent concurrent polls from triggering the transition twice.
-			if ( false !== get_transient( 'mltr_transition_lock' ) ) {
-				return $status;
-			}
-			set_transient( 'mltr_transition_lock', 1, 30 );
-
-			// All scan batches done — transition to check phase.
-			$check_batches = $this->start_check();
-			delete_transient( 'mltr_transition_lock' );
-			delete_transient( 'mltr_stats_cache' );
-
-			if ( $check_batches > 0 ) {
-				// Re-read transient to pick up total_links and check_batches set by start_check().
-				$status = get_transient( 'mltr_scan_status' );
-				if ( ! is_array( $status ) ) {
-					return $this->get_idle_status();
-				}
-				$status['phase'] = 'checking';
-				set_transient( 'mltr_scan_status', $status, HOUR_IN_SECONDS );
-			} else {
-				$status['status'] = 'complete';
-				update_option( 'mltr_last_scan_date', $status['started_at'] );
-				set_transient( 'mltr_scan_status', $status, HOUR_IN_SECONDS );
-				do_action( 'mltr/scan/complete' );
-			}
-		} elseif ( 'checking' === $phase && 0 === $pending_count ) {
-			$status['status'] = 'complete';
-			update_option( 'mltr_last_scan_date', $status['started_at'] );
-			set_transient( 'mltr_scan_status', $status, HOUR_IN_SECONDS );
-			do_action( 'mltr/scan/complete' );
-		}
-
-		$stats = $this->get_cached_stats();
-		return array_merge( $status, array(
-			'total_links'     => $stats['total'],
-			'ok_count'        => $stats['ok_count'],
-			'broken_count'    => $stats['broken_count'],
-			'redirect_count'  => $stats['redirect_count'],
-			'error_count'     => $stats['error_count'],
-			'timeout_count'   => $stats['timeout_count'],
-			'skipped_count'   => $stats['skipped_count'],
-			'pending_count'   => $stats['pending_count'],
-			'checked_links'   => $stats['total'] - $stats['pending_count'],
-		) );
-	}
-
-	/**
-	 * Returns the default idle status array.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @return array<string, mixed>
-	 */
-	private function get_idle_status(): array {
-		$stats = $this->get_cached_stats();
+		$run = $this->store->current_run();
+		$stats = $this->links_repo->get_category_stats();
+		$scan = null !== $run ? $this->store->aggregate( $run['id'], 'scanning' ) : array();
+		$check = null !== $run ? $this->store->aggregate( $run['id'], 'checking' ) : array();
+		$running = null !== $run && 'running' === $run['status'];
 		return array(
-			'status'         => 'idle',
-			'phase'          => null,
-			'total_posts'    => 0,
-			'scanned_posts'  => 0,
-			'total_links'    => $stats['total'],
-			'checked_links'  => $stats['total'] - $stats['pending_count'],
+			'scan_id'        => $run['id'] ?? null,
+			'status'         => $run['status'] ?? 'idle',
+			'phase'          => $run['phase'] ?? null,
+			'scan_type'      => $run['scan_type'] ?? null,
+			'total_posts'    => $scan['total_items'] ?? 0,
+			'scanned_posts'  => $scan['processed'] ?? 0,
+			'total_links'    => $running ? ( $check['total_items'] ?? 0 ) : $stats['total'],
+			'checked_links'  => $running ? ( $check['processed'] ?? 0 ) : $stats['total'] - $stats['pending_count'],
 			'ok_count'       => $stats['ok_count'],
 			'broken_count'   => $stats['broken_count'],
-			'redirect_count' => $stats['single_redirect_count'] + $stats['chain_redirect_count'],
-			'started_at'     => null,
-			'error_message'  => null,
+			'redirect_count' => $stats['redirect_count'],
+			'error_count'    => $stats['error_count'],
+			'timeout_count'  => $stats['timeout_count'],
+			'skipped_count'  => $stats['skipped_count'],
+			'pending_count'  => $stats['pending_count'],
+			'pending_jobs'   => ( $scan['pending'] ?? 0 ) + ( $check['pending'] ?? 0 ),
+			'running_jobs'   => ( $scan['running'] ?? 0 ) + ( $check['running'] ?? 0 ),
+			'failed_jobs'    => ( $scan['failed'] ?? 0 ) + ( $check['failed'] ?? 0 ),
+			'started_at'     => isset( $run['started_at'] ) ? str_replace( ' ', 'T', $run['started_at'] ) . 'Z' : null,
+			'error_message'  => $run['error_message'] ?? null,
 		);
-	}
-
-	/**
-	 * Returns category stats with a short-lived transient cache.
-	 *
-	 * Avoids running the heavy 16-SUM aggregation query on every
-	 * status poll (every 5 seconds).
-	 *
-	 * @since 1.0.0
-	 *
-	 * @return array<string, int>
-	 */
-	private function get_cached_stats(): array {
-		$cached = get_transient( 'mltr_stats_cache' );
-		if ( is_array( $cached ) ) {
-			return $cached;
-		}
-
-		$stats = $this->links_repo->get_category_stats();
-		set_transient( 'mltr_stats_cache', $stats, 30 );
-
-		return $stats;
-	}
-
-	/**
-	 * Calculates optimal batch size based on available memory.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @return int Batch size (between 10 and 200).
-	 */
-	private function calculate_batch_size(): int {
-		$memory_available   = wp_convert_hr_to_bytes( WP_MEMORY_LIMIT ) - memory_get_usage( true );
-		$estimated_per_item = 50 * 1024; // ~50KB per post.
-
-		return max( 10, min( 200, (int) floor( $memory_available * 0.5 / $estimated_per_item ) ) );
-	}
-
-	/**
-	 * Queries post IDs to scan based on settings and scan type.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param string $scan_type 'full' or 'delta'.
-	 * @return int[] Post IDs.
-	 */
-	private function get_scannable_post_ids( string $scan_type ): array {
-		$settings = get_option( 'mltr_settings', array() );
-
-		$query_args = array(
-			'post_type'      => $settings['scan_post_types'] ?? array( 'post', 'page' ),
-			'post_status'    => 'publish',
-			'fields'         => 'ids',
-			'posts_per_page' => -1,
-			'no_found_rows'  => true,
-		);
-
-		// Delta scan: only posts modified since last successful scan.
-		if ( 'delta' === $scan_type ) {
-			$last_scan = get_option( 'mltr_last_scan_date' );
-			if ( $last_scan ) {
-				$query_args['date_query'] = array(
-					array(
-						'column' => 'post_modified_gmt',
-						'after'  => $last_scan,
-					),
-				);
-			}
-		}
-
-		$query = new \WP_Query( $query_args );
-
-		return $query->posts;
-	}
-
-	/**
-	 * Splits post IDs into batches, stores as transients, and enqueues scan actions.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param int[] $post_ids   Post IDs to scan.
-	 * @param int   $batch_size Number of posts per batch.
-	 * @return int Number of batches created.
-	 */
-	private function create_and_enqueue_scan_batches( array $post_ids, int $batch_size ): int {
-		if ( empty( $post_ids ) ) {
-			return 0;
-		}
-
-		$chunks       = array_chunk( $post_ids, $batch_size );
-		$batch_count  = 0;
-		$fail_count   = 0;
-		$scan_batches = array();
-
-		foreach ( $chunks as $chunk ) {
-			$batch_id = wp_unique_id( 'mltr_batch_' );
-
-			set_transient(
-				'mltr_scan_batch_' . $batch_id,
-				array(
-					'post_ids' => $chunk,
-					'offset'   => 0,
-				),
-				HOUR_IN_SECONDS
-			);
-
-			$action_id = SchedulerBootstrap::enqueue_scan_batch( $batch_id );
-			if ( 0 === $action_id ) {
-				++$fail_count;
-			} else {
-				$scan_batches[] = $batch_id;
-			}
-			++$batch_count;
-		}
-
-		// Update status with tracked batches.
-		$status = get_transient( 'mltr_scan_status' );
-		if ( is_array( $status ) ) {
-			$status['scan_batches'] = $scan_batches;
-			set_transient( 'mltr_scan_status', $status, HOUR_IN_SECONDS );
-		}
-
-		if ( $fail_count > 0 && $fail_count === $batch_count ) {
-			if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-				error_log( "[MuriLinkTracker] All {$batch_count} scan batches failed to enqueue." );
-			}
-			$status = get_transient( 'mltr_scan_status' );
-			if ( is_array( $status ) ) {
-				$status['status']        = 'error';
-				$status['error_message'] = __( 'Action Scheduler failed to enqueue scan batches. Check server error logs.', 'muri-link-tracker' );
-				set_transient( 'mltr_scan_status', $status, HOUR_IN_SECONDS );
-			}
-		}
-
-		return $batch_count;
-	}
-
-	/**
-	 * Enqueues check batches from chunks.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param array $chunks Array of link ID chunks.
-	 * @return int Number of batches enqueued.
-	 */
-	private function enqueue_check_batches( array $chunks ): int {
-		$batch_count = 0;
-		$fail_count  = 0;
-
-		foreach ( $chunks as $chunk ) {
-			$action_id = SchedulerBootstrap::enqueue_check_batch( $chunk );
-			if ( 0 === $action_id ) {
-				++$fail_count;
-			}
-			++$batch_count;
-		}
-
-		if ( $fail_count > 0 && $fail_count === $batch_count ) {
-			if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-				error_log( "[MuriLinkTracker] All {$batch_count} check batches failed to enqueue." );
-			}
-		}
-
-		return $batch_count;
 	}
 }

@@ -15,7 +15,7 @@ defined( 'ABSPATH' ) || exit;
 use MuriLinkTracker\Models\Enums\LinkStatus;
 
 /**
- * Checks internal links without performing HTTP requests.
+ * Resolves known internal content locally, with an optional safe HTTP fallback.
  *
  * Uses WordPress APIs (url_to_postid, get_page_by_path) for pages
  * and file_exists() for media/uploads, eliminating self-DDoS risk
@@ -56,12 +56,14 @@ class InternalLinkChecker {
 	 *
 	 * @param string $site_url       Optional site URL for testability. Defaults to home_url().
 	 * @param string $upload_basedir Optional upload basedir for testability.
-	 * @param string $upload_baseurl Optional upload baseurl for testability.
+	 * @param string           $upload_baseurl Optional upload baseurl for testability.
+	 * @param HttpChecker|null $http_checker   Bounded fallback for unknown routes.
 	 */
 	public function __construct(
 		string $site_url = '',
 		string $upload_basedir = '',
 		string $upload_baseurl = '',
+		private readonly ?HttpChecker $http_checker = null,
 	) {
 		$this->site_url = '' !== $site_url ? $site_url : \home_url();
 
@@ -70,13 +72,13 @@ class InternalLinkChecker {
 			$this->upload_baseurl = $upload_baseurl;
 		} else {
 			$uploads              = \wp_upload_dir();
-			$this->upload_basedir = $uploads['basedir'] ?? '';
-			$this->upload_baseurl = $uploads['baseurl'] ?? '';
+			$this->upload_basedir = $uploads['basedir'];
+			$this->upload_baseurl = $uploads['baseurl'];
 		}
 	}
 
 	/**
-	 * Checks a batch of internal URLs without HTTP requests.
+	 * Checks a batch of internal URLs, using the optional fallback if needed.
 	 *
 	 * @since 1.0.0
 	 *
@@ -106,7 +108,7 @@ class InternalLinkChecker {
 	 * Strategy:
 	 * 1. If it looks like an upload file (under wp-content/uploads/), check file_exists().
 	 * 2. Otherwise, try url_to_postid() to resolve it as published content.
-	 * 3. If unresolvable, mark as broken.
+	 * 3. If unresolved, perform the optional safe HTTP check or report unverified.
 	 *
 	 * @since 1.0.0
 	 *
@@ -146,10 +148,14 @@ class InternalLinkChecker {
 			return $this->build_result( false, $elapsed, 'post_not_published' );
 		}
 
-		// 3. Unresolvable: could be an archive, taxonomy, or custom rewrite.
-		// Mark as OK with a note — we can't definitively say it's broken
-		// without an HTTP request, and false-positives are worse than misses.
-		return $this->build_result( true, $elapsed, 'unresolvable_assumed_ok' );
+		// 3. Archives, taxonomies and custom rewrites need an actual HTTP check.
+		if ( null !== $this->http_checker ) {
+			return $this->http_checker->check( $abs_url );
+		}
+		$result                    = $this->build_result( false, $elapsed, 'internal_unverified' );
+		$result['http_status']      = 0;
+		$result['status_category']  = LinkStatus::Skipped;
+		return $result;
 	}
 
 	/**
@@ -161,8 +167,9 @@ class InternalLinkChecker {
 	 * @return bool
 	 */
 	private function is_upload_url( string $abs_url ): bool {
+		$path_url = explode( '#', explode( '?', $abs_url, 2 )[0], 2 )[0];
 		return '' !== $this->upload_baseurl
-			&& \str_starts_with( $abs_url, $this->upload_baseurl );
+			&& \str_starts_with( $path_url, rtrim( $this->upload_baseurl, '/' ) . '/' );
 	}
 
 	/**
@@ -174,10 +181,16 @@ class InternalLinkChecker {
 	 * @return bool
 	 */
 	private function check_upload_file( string $abs_url ): bool {
-		$relative_path = \substr( $abs_url, \strlen( $this->upload_baseurl ) );
-		$file_path     = $this->upload_basedir . $relative_path;
-
-		return \file_exists( $file_path );
+		$path_url      = explode( '#', explode( '?', $abs_url, 2 )[0], 2 )[0];
+		$relative_path = rawurldecode( \substr( $path_url, \strlen( rtrim( $this->upload_baseurl, '/' ) ) ) );
+		if ( str_contains( $relative_path, "\0" ) || str_contains( $relative_path, '\\' ) || in_array( '..', explode( '/', $relative_path ), true ) ) {
+			return false;
+		}
+		$base = realpath( $this->upload_basedir );
+		$file = realpath( $this->upload_basedir . $relative_path );
+		return false !== $base && false !== $file
+			&& str_starts_with( $file, rtrim( $base, DIRECTORY_SEPARATOR ) . DIRECTORY_SEPARATOR )
+			&& is_file( $file );
 	}
 
 	/**

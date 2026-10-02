@@ -121,7 +121,7 @@ describe( 'store/actions — thunks', () => {
 			} );
 		} );
 
-		it( 'clears links on API error', async () => {
+		it( 'retains links and reports API errors', async () => {
 			api.fetchLinksFromApi.mockRejectedValue(
 				new Error( 'Network error' )
 			);
@@ -130,10 +130,9 @@ describe( 'store/actions — thunks', () => {
 			await thunk( { dispatch } );
 
 			expect( dispatch ).toHaveBeenCalledWith( {
-				type: 'SET_LINKS',
-				items: [],
-				total: 0,
-				totalPages: 0,
+				type: 'SET_ERROR',
+				key: 'links',
+				error: 'Network error',
 			} );
 		} );
 	} );
@@ -155,7 +154,7 @@ describe( 'store/actions — thunks', () => {
 			expect( api.startScanApi ).toHaveBeenCalledWith( 'full' );
 			expect( dispatch ).toHaveBeenCalledWith( {
 				type: 'SET_SCAN_STATUS',
-				status: 'running',
+				status: { status: 'running' },
 			} );
 			expect( noticeActions.createSuccessNotice ).toHaveBeenCalled();
 		} );
@@ -350,11 +349,11 @@ describe( 'store/actions — thunks', () => {
 			} );
 		} );
 
-		it( 'silently ignores errors', async () => {
+		it( 'returns null on errors for the polling loop to retry', async () => {
 			api.fetchScanStatusApi.mockRejectedValue( new Error( 'network' ) );
 
 			const thunk = fetchScanStatus();
-			await expect( thunk( { dispatch } ) ).resolves.toBeUndefined();
+			await expect( thunk( { dispatch } ) ).resolves.toBeNull();
 		} );
 	} );
 } );

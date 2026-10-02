@@ -22,10 +22,10 @@ export const STATUS_LABELS = {
 
 export const STATUS_COLORS = {
 	pending: '#757575',
-	ok: '#00a32a',
-	redirect: '#dba617',
-	broken: '#d63638',
-	error: '#d63638',
+	ok: '#007a20',
+	redirect: '#805900',
+	broken: '#b32d2e',
+	error: '#b32d2e',
 	timeout: '#996800',
 	skipped: '#757575',
 };

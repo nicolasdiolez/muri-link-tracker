@@ -72,6 +72,9 @@ class ReviewNotice {
 	 * @since 1.0.0
 	 */
 	public function maybe_display_notice(): void {
+		if ( ! \current_user_can( 'manage_options' ) ) {
+			return;
+		}
 		// Do not show on the plugin's own page to avoid clutter.
 		$screen = \get_current_screen();
 		if ( $screen && 'toplevel_page_muri-link-tracker' === $screen->id ) {
@@ -118,6 +121,9 @@ class ReviewNotice {
 	 */
 	public function ajax_dismiss_notice(): void {
 		\check_ajax_referer( self::AJAX_ACTION, 'nonce' );
+		if ( ! \current_user_can( 'manage_options' ) ) {
+			\wp_send_json_error( array( 'message' => __( 'You cannot change this setting.', 'muri-link-tracker' ) ), 403 );
+		}
 		\update_option( self::OPTION_DISMISSED, true );
 		\wp_send_json_success();
 	}
@@ -128,6 +134,9 @@ class ReviewNotice {
 	 * @since 1.0.0
 	 */
 	public function enqueue_assets(): void {
+		if ( ! \current_user_can( 'manage_options' ) ) {
+			return;
+		}
 		$first_scan = \get_option( self::OPTION_FIRST_SCAN );
 		if ( ! $first_scan || \get_option( self::OPTION_DISMISSED ) ) {
 			return;

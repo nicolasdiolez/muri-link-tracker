@@ -22,14 +22,6 @@ use MuriLinkTracker\Models\ScanResult;
 class ContentParser {
 
 	/**
-	 * URL schemes that should be skipped during extraction.
-	 *
-	 * @since 1.0.0
-	 * @var string[]
-	 */
-	private const SKIP_PREFIXES = array( '#', 'mailto:', 'tel:', 'javascript:', 'data:' );
-
-	/**
 	 * Extracts all anchor links from an HTML string.
 	 *
 	 * @since 1.0.0
@@ -45,24 +37,28 @@ class ContentParser {
 		}
 
 		// Quick check: skip expensive DOMDocument allocation if no anchor tags exist.
-		if ( ! str_contains( $html, '<a ' ) && ! str_contains( $html, '<a>' ) && ! str_contains( $html, 'href=' ) ) {
+		if ( 1 !== preg_match( '/<a(?:\s|>)/i', $html ) ) {
 			return array();
 		}
 
-		$dom = new \DOMDocument();
-		libxml_use_internal_errors( true );
-		$dom->loadHTML(
-			'<?xml encoding="utf-8">' . $html,
-			LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD
-		);
-		libxml_clear_errors();
+		$dom             = new \DOMDocument();
+		$previous_errors = libxml_use_internal_errors( true );
+		try {
+			$dom->loadHTML(
+				'<?xml encoding="utf-8">' . $html,
+				LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD
+			);
+		} finally {
+			libxml_clear_errors();
+			libxml_use_internal_errors( $previous_errors );
+		}
 
 		$results  = array();
 		$position = 0;
 
 		foreach ( $dom->getElementsByTagName( 'a' ) as $node ) {
 			/** @var \DOMElement $node */
-			$href = $node->getAttribute( 'href' );
+			$href = trim( $node->getAttribute( 'href' ) );
 
 			if ( $this->should_skip_url( $href ) ) {
 				continue;
@@ -94,14 +90,13 @@ class ContentParser {
 	private function should_skip_url( string $href ): bool {
 		$href = trim( $href );
 
-		if ( '' === $href ) {
+		if ( '' === $href || str_starts_with( $href, '#' ) ) {
 			return true;
 		}
 
-		foreach ( self::SKIP_PREFIXES as $prefix ) {
-			if ( str_starts_with( $href, $prefix ) ) {
-				return true;
-			}
+		// Schemes are case-insensitive; only HTTP(S) URLs and relative links are checked.
+		if ( preg_match( '/^([a-z][a-z0-9+.-]*):/i', $href, $matches ) ) {
+			return ! in_array( strtolower( $matches[1] ), array( 'http', 'https' ), true );
 		}
 
 		return false;

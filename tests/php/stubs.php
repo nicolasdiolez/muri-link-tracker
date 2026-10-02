@@ -10,6 +10,37 @@
 
 namespace {
 
+	function absint( mixed $value ): int { return abs( (int) $value ); }
+	function current_user_can( string $capability, mixed ...$args ): bool {
+		return $GLOBALS['mltr_test_caps'][ $capability . ( isset( $args[0] ) ? ':' . $args[0] : '' ) ] ?? $GLOBALS['mltr_test_caps'][ $capability ] ?? true;
+	}
+	function get_option( string $name, mixed $default = false ): mixed { return $GLOBALS['mltr_test_options'][ $name ] ?? $default; }
+	function wp_revisions_enabled( WP_Post $post ): bool { return $GLOBALS['mltr_test_revisions_enabled'] ?? true; }
+	function has_blocks( string $content ): bool { return str_contains( $content, '<!-- wp:' ); }
+	function parse_blocks( string $content ): array { return $GLOBALS['mltr_test_blocks'] ?? array( array( 'blockName' => null, 'attrs' => array(), 'innerBlocks' => array(), 'innerHTML' => $content, 'innerContent' => array( $content ) ) ); }
+	function _wp_put_post_revision( array|object $post, bool $autosave = false ): int|WP_Error {
+		$GLOBALS['mltr_test_revisions'][] = $post;
+		return $GLOBALS['mltr_test_revision_result'] ?? count( $GLOBALS['mltr_test_revisions'] );
+	}
+	class WP_REST_Controller { protected $namespace; protected $rest_base; }
+	class WP_REST_Request {
+		private array $params = array();
+		public function __construct( private string $method = 'GET', private string $route = '' ) {}
+		public function get_route(): string { return $this->route; }
+		public function get_param( string $key ): mixed { return $this->params[ $key ] ?? null; }
+		public function set_param( string $key, mixed $value ): void { $this->params[ $key ] = $value; }
+		public function get_params(): array { return $this->params; }
+		public function get_json_params(): array { return $this->params; }
+	}
+	class WP_HTTP_Response {
+		public function __construct( protected mixed $data = null, protected int $status = 200, protected array $headers = array() ) {}
+		public function get_data(): mixed { return $this->data; }
+		public function get_status(): int { return $this->status; }
+		public function get_headers(): array { return $this->headers; }
+	}
+	class WP_REST_Response extends WP_HTTP_Response {}
+	class WP_REST_Server { const READABLE = 'GET'; const CREATABLE = 'POST'; const EDITABLE = 'POST, PUT, PATCH'; const DELETABLE = 'DELETE'; }
+
 	// Translation functions.
 	if ( ! function_exists( '__' ) ) {
 		function __( string $text, string $domain = 'default' ): string {
@@ -63,6 +94,9 @@ namespace {
 			public string $post_content = '';
 			public string $post_excerpt = '';
 			public string $post_title = '';
+			public string $post_type = 'post';
+			public string $post_modified = '2026-01-01 00:00:00';
+			public string $post_modified_gmt = '2026-01-01 00:00:00';
 			public function __construct( ?object $data = null ) {
 				if ( $data ) {
 					foreach ( get_object_vars( $data ) as $key => $value ) {
@@ -155,6 +189,7 @@ namespace {
 			public string $prefix = 'wp_';
 			public string $posts  = 'wp_posts';
 			public int $insert_id = 0;
+			public string $last_error = '';
 			public function prepare( $query, ...$args ): string {
 				return (string) $query;
 			}
@@ -194,10 +229,13 @@ namespace {
 		class WP_Error {
 			private string $code;
 			private string $message;
-			public function __construct( string $code = '', string $message = '' ) {
+			private mixed $data;
+			public function __construct( string $code = '', string $message = '', mixed $data = null ) {
 				$this->code    = $code;
 				$this->message = $message;
+				$this->data = $data;
 			}
+			public function get_error_data(): mixed { return $this->data; }
 			public function get_error_code(): string {
 				return $this->code;
 			}

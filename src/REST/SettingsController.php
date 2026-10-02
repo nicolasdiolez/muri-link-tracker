@@ -157,7 +157,16 @@ class SettingsController extends \WP_REST_Controller {
 			if ( ! is_array( $params['excluded_urls'] ) ) {
 				$errors[] = __( 'excluded_urls must be an array.', 'muri-link-tracker' );
 			} else {
-				$updated['excluded_urls'] = array_map( 'esc_url_raw', $params['excluded_urls'] );
+				$updated['excluded_urls'] = array_values( array_filter( array_map( 'sanitize_text_field', $params['excluded_urls'] ) ) );
+				if ( count( $updated['excluded_urls'] ) > 500 ) {
+					$errors[] = __( 'Use at most 500 URL exclusion patterns.', 'muri-link-tracker' );
+				}
+				foreach ( $updated['excluded_urls'] as $pattern ) {
+					if ( strlen( $pattern ) > 2048 ) {
+						$errors[] = __( 'Each URL exclusion pattern must be at most 2048 bytes.', 'muri-link-tracker' );
+						break;
+					}
+				}
 			}
 		}
 
@@ -195,7 +204,9 @@ class SettingsController extends \WP_REST_Controller {
 			);
 		}
 
-		update_option( 'mltr_settings', $updated );
+		if ( ! update_option( 'mltr_settings', $updated ) && get_option( 'mltr_settings', array() ) !== $updated ) {
+			return new \WP_Error( 'mltr_settings_unavailable', __( 'The settings could not be saved. Please retry.', 'muri-link-tracker' ), array( 'status' => 503 ) );
+		}
 
 		return new \WP_REST_Response( $updated, 200 );
 	}

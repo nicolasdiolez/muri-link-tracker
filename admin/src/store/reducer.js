@@ -1,3 +1,4 @@
+import { DEFAULT_VIEW } from '../utils/link-view';
 /**
  * Store reducer.
  *
@@ -14,10 +15,22 @@ const DEFAULT_STATE = {
 	settings: null,
 	currentLink: null,
 	isLoading: {},
+	errors: {},
+	linksView: DEFAULT_VIEW,
+	rechecks: [],
 };
 
 export default function reducer( state = DEFAULT_STATE, action ) {
 	switch ( action.type ) {
+		case 'SET_ERROR':
+			return {
+				...state,
+				errors: { ...state.errors, [ action.key ]: action.error },
+			};
+		case 'SET_LINKS_VIEW':
+			return { ...state, linksView: action.view };
+		case 'SET_RECHECKS':
+			return { ...state, rechecks: action.rechecks };
 		case 'SET_LINKS':
 			return {
 				...state,

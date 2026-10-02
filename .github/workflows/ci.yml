@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  php:
+    name: PHP ${{ matrix.php }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.2', '8.4']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: dom, mbstring, curl, mysqli
+          tools: composer:v2
+          coverage: none
+      - run: composer validate --strict
+      - run: composer install --prefer-dist --no-interaction --no-progress
+      - run: vendor/bin/phpunit
+      - run: vendor/bin/phpstan analyse --no-progress --memory-limit=1G
+
+  frontend:
+    name: Admin interface
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run test:js -- --runInBand
+        env:
+          CI: 'true'
+      - run: npm run lint:js
+      - run: npm run lint:css
+      - run: npm run build
+
+  integration:
+    name: WordPress 6.9 / MariaDB 11.4
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: local-root-test
+          MARIADB_DATABASE: muri_test
+          MARIADB_USER: muri_test
+          MARIADB_PASSWORD: local-plugin-test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: dom, mbstring, curl, mysqli
+          tools: composer:v2, wp-cli
+          coverage: none
+      - run: composer install --prefer-dist --no-interaction --no-progress
+      - name: Install disposable WordPress
+        env:
+          WP_TEST_PATH: ${{ runner.temp }}/wordpress
+        run: |
+          wp core download --version=6.9 --path="$WP_TEST_PATH"
+          wp config create --path="$WP_TEST_PATH" --dbname=muri_test --dbuser=muri_test --dbpass=local-plugin-test --dbhost=127.0.0.1:3306 --skip-check
+          wp config set WP_ENVIRONMENT_TYPE local --path="$WP_TEST_PATH"
+          wp config set DISABLE_WP_CRON true --raw --path="$WP_TEST_PATH"
+          wp core install --path="$WP_TEST_PATH" --url=http://127.0.0.1:8085 --title='Muri Integration Tests' --admin_user=admin --admin_password=local-admin-test --admin_email=tests@example.com --skip-email
+          ln -s "$GITHUB_WORKSPACE" "$WP_TEST_PATH/wp-content/plugins/muri-link-tracker"
+          wp plugin activate muri-link-tracker --path="$WP_TEST_PATH"
+      - name: Exercise the real queue and content transactions
+        env:
+          WP_TEST_PATH: ${{ runner.temp }}/wordpress
+        run: |
+          wp eval-file "$GITHUB_WORKSPACE/tests/integration/queue.php" --path="$WP_TEST_PATH"
+          wp eval-file "$GITHUB_WORKSPACE/tests/integration/content-editing.php" --path="$WP_TEST_PATH"

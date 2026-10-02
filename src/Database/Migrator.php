@@ -19,6 +19,15 @@ defined( 'ABSPATH' ) || exit;
  */
 class Migrator {
 
+	public const DB_VERSION = '2';
+
+	/** Upgrade existing installations as well as fresh activations. */
+	public function maybe_migrate(): void {
+		if ( self::DB_VERSION !== get_option( 'mltr_db_version' ) ) {
+			$this->create_tables();
+		}
+	}
+
 	/**
 	 * Creates the plugin database tables.
 	 *
@@ -81,8 +90,41 @@ class Migrator {
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 		dbDelta( $sql_links );
 		dbDelta( $sql_instances );
+		dbDelta( "CREATE TABLE {$wpdb->prefix}mltr_scans (
+			id char(36) NOT NULL,
+			scan_type varchar(10) NOT NULL,
+			status varchar(20) NOT NULL DEFAULT 'running',
+			phase varchar(20) NOT NULL DEFAULT 'scanning',
+			started_at datetime NOT NULL,
+			finished_at datetime DEFAULT NULL,
+			error_message text DEFAULT NULL,
+			scan_cursor bigint(20) unsigned NOT NULL DEFAULT 0,
+			check_cursor bigint(20) unsigned NOT NULL DEFAULT 0,
+			planning_done tinyint(1) NOT NULL DEFAULT 0,
+			last_scan_date datetime DEFAULT NULL,
+			PRIMARY KEY  (id),
+			KEY idx_status_started (status,started_at)
+		) {$charset_collate};" );
+		dbDelta( "CREATE TABLE {$wpdb->prefix}mltr_scan_jobs (
+			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			scan_id char(36) NOT NULL,
+			phase varchar(20) NOT NULL,
+			batch_key bigint(20) unsigned NOT NULL,
+			item_ids longtext NOT NULL,
+			item_count int(11) NOT NULL,
+			completed_items int(11) NOT NULL DEFAULT 0,
+			status varchar(20) NOT NULL DEFAULT 'pending',
+			attempts int(11) NOT NULL DEFAULT 0,
+			lease_token char(36) DEFAULT NULL,
+			lease_until datetime DEFAULT NULL,
+			error_message text DEFAULT NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY scan_phase_batch (scan_id,phase,batch_key),
+			KEY scan_status (scan_id,status),
+			KEY scan_phase_status (scan_id,phase,status)
+		) {$charset_collate};" );
 
-		update_option( 'mltr_db_version', MLTR_VERSION );
+		update_option( 'mltr_db_version', self::DB_VERSION );
 	}
 
 	/**
@@ -92,6 +134,8 @@ class Migrator {
 	 */
 	public function drop_tables(): void {
 		global $wpdb;
+		$wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}mltr_scan_jobs" );
+		$wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}mltr_scans" );
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.DirectQuery
 		$wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}mltr_instances" );

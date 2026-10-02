@@ -1,11 +1,5 @@
-/**
- * Muri Link Tracker admin styles.
- *
- * @package MuriLinkTracker
- * @since   1.0.0
- */
-
-/* ── App layout ─────────────────────────────────────────────────── */
+// Sass keeps these styles even though the package declares sideEffects: false.
+@use "@wordpress/dataviews/build-style/style.css";
 
 .mltr-app {
 	max-width: 1200px;
@@ -16,7 +10,12 @@
 	}
 }
 
-/* ── Dashboard summary cards ────────────────────────────────────── */
+.mltr-tabs {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-bottom: 20px;
+}
 
 .mltr-summary-cards {
 	display: grid;
@@ -47,15 +46,15 @@
 	}
 
 	&--broken .mltr-summary-card__value {
-		color: #d63638;
+		color: #b32d2e;
 	}
 
 	&--ok .mltr-summary-card__value {
-		color: #00a32a;
+		color: #007a20;
 	}
 
 	&--redirect .mltr-summary-card__value {
-		color: #dba617;
+		color: #805900;
 	}
 
 	&--internal .mltr-summary-card__value {
@@ -63,15 +62,30 @@
 	}
 
 	&--external .mltr-summary-card__value {
-		color: #8c8f94;
+		color: #646970;
 	}
 
 	&--affiliate .mltr-summary-card__value {
-		color: #9b59b6;
+		color: #86439f;
 	}
 
 	&--cloaked .mltr-summary-card__value {
-		color: #e67e22;
+		color: #a24a00;
+	}
+
+	&--action {
+		font: inherit;
+		cursor: pointer;
+		width: 100%;
+
+		&:hover {
+			border-color: #2271b1;
+		}
+
+		&:focus-visible {
+			outline: 2px solid #2271b1;
+			outline-offset: 3px;
+		}
 	}
 }
 
@@ -86,8 +100,6 @@
 	}
 }
 
-/* ── Scan panel ─────────────────────────────────────────────────── */
-
 .mltr-scan-panel {
 	background: #fff;
 	border: 1px solid #ddd;
@@ -96,6 +108,7 @@
 
 	&__controls {
 		display: flex;
+		flex-wrap: wrap;
 		gap: 8px;
 	}
 
@@ -113,7 +126,7 @@
 	&__complete {
 		margin: 8px 0 0;
 		font-size: 13px;
-		color: #00a32a;
+		color: #007a20;
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
@@ -146,54 +159,12 @@
 	}
 }
 
-/* ── Filter bar ─────────────────────────────────────────────────── */
-
 .mltr-filter-bar {
 	margin-bottom: 12px;
-}
 
-/* ── Link table ─────────────────────────────────────────────────── */
-
-.mltr-link-table {
-	margin-top: 16px;
-
-	&__toolbar {
+	.components-button-group {
 		display: flex;
-		justify-content: space-between;
-		align-items: flex-start;
-		gap: 12px;
-	}
- 
-	/* DataViews density overrides */
-	&.is-density-comfortable {
-		.dataviews-view-table td,
-		.dataviews-view-table th {
-			padding: 16px 12px !important;
-		}
-	}
- 
-	&.is-density-balanced {
-		.dataviews-view-table td,
-		.dataviews-view-table th {
-			padding: 10px 12px !important;
-		}
-	}
- 
-	&.is-density-compact {
-		.dataviews-view-table td,
-		.dataviews-view-table th {
-			padding: 4px 8px !important;
-			font-size: 12px;
-		}
- 
-		.mltr-badge {
-			font-size: 10px;
-			padding: 2px 4px;
-		}
- 
-		.mltr-http-status {
-			font-size: 11px;
-		}
+		flex-wrap: wrap;
 	}
 }
 
@@ -212,20 +183,20 @@
 
 	&--broken,
 	&--error {
-		color: #d63638;
+		color: #b32d2e;
 	}
 
 	&--redirect {
-		color: #dba617;
+		color: #805900;
 	}
 
 	&--ok {
-		color: #00a32a;
+		color: #007a20;
 	}
 
 	&--pending,
 	&--skipped {
-		color: #757575;
+		color: #646970;
 	}
 }
 
@@ -235,13 +206,74 @@
 	text-transform: uppercase;
 }
 
-/* ── Edit modal ─────────────────────────────────────────────────── */
+.mltr-link-table {
+	margin-top: 16px;
+
+	&__toolbar {
+		display: flex;
+		justify-content: flex-start;
+		align-items: flex-start;
+		flex-wrap: wrap;
+		gap: 12px;
+	}
+
+	.dataviews-wrapper {
+		max-width: 100%;
+		overflow-x: auto;
+	}
+
+	&.is-density-comfortable {
+
+		.dataviews-view-table td,
+		.dataviews-view-table th {
+			padding: 16px 12px !important;
+		}
+	}
+
+	&.is-density-balanced {
+
+		.dataviews-view-table td,
+		.dataviews-view-table th {
+			padding: 10px 12px !important;
+		}
+	}
+
+	&.is-density-compact {
+
+		.dataviews-view-table td,
+		.dataviews-view-table th {
+			padding: 4px 8px !important;
+			font-size: 12px;
+		}
+
+		.mltr-badge {
+			font-size: 11px;
+			padding: 2px 4px;
+		}
+
+		.mltr-http-status {
+			font-size: 12px;
+		}
+	}
+}
 
 .mltr-edit-modal {
+	overflow-wrap: anywhere;
+
+	fieldset {
+		margin-block: 16px;
+	}
+
+	.components-notice {
+		margin: 12px 0;
+	}
+
 	&__instances {
 		margin-top: 16px;
 		padding-top: 16px;
 		border-top: 1px solid #ddd;
+		max-height: 300px;
+		overflow-y: auto;
 
 		h3 {
 			font-size: 13px;
@@ -267,13 +299,16 @@
 
 	&__actions {
 		display: flex;
+		flex-wrap: wrap;
 		gap: 8px;
 		margin-top: 16px;
 		justify-content: flex-end;
 	}
-}
 
-/* ── Settings ───────────────────────────────────────────────────── */
+	&__diagnostics {
+		overflow-wrap: anywhere;
+	}
+}
 
 .mltr-settings {
 	margin-top: 16px;
@@ -281,9 +316,16 @@
 	&__actions {
 		margin-top: 16px;
 	}
-}
 
-/* ── Support Card ────────────────────────────────────────────────── */
+	.components-panel__row {
+		display: block;
+	}
+
+	.components-base-control {
+		width: 100%;
+		max-width: 640px;
+	}
+}
 
 .mltr-support-card {
 	background: #fff;
@@ -297,9 +339,11 @@
 	margin-top: 20px;
 
 	&__content {
+
 		h3 {
 			margin-top: 0 !important;
 		}
+
 		p {
 			margin-bottom: 0;
 			color: #646970;
@@ -308,6 +352,7 @@
 
 	&__actions {
 		display: flex;
+		flex-wrap: wrap;
 		gap: 10px;
 		flex-shrink: 0;
 	}
@@ -323,12 +368,28 @@
 	}
 }
 
-/* ── Snackbar ───────────────────────────────────────────────────── */
-
 .mltr-snackbar-list {
 	position: fixed;
 	bottom: 40px;
 	left: 50%;
 	transform: translateX(-50%);
 	z-index: 100000;
+}
+
+@media (max-width: 480px) {
+
+	.mltr-summary-cards {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 8px;
+	}
+
+	.mltr-summary-card {
+		padding: 12px;
+	}
+
+	.mltr-snackbar-list {
+		left: 12px;
+		right: 12px;
+		transform: none;
+	}
 }

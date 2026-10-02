@@ -171,4 +171,32 @@ class ContentParserTest extends TestCase {
 
 		$this->assertCount( 0, $results );
 	}
+
+	public function test_parse_handles_uppercase_tags_and_attribute_whitespace(): void {
+		$results = $this->parser->parse( '<A HREF = "  HTTPS://example.com/About  ">About</A>' );
+		$this->assertCount( 1, $results );
+		$this->assertSame( 'HTTPS://example.com/About', $results[0]->url );
+	}
+
+	public function test_parse_skips_all_non_http_schemes_case_insensitively(): void {
+		$schemes = array( 'MAILTO:user@example.com', 'TEL:+12345', 'JaVaScRiPt:alert(1)', 'DATA:text/plain,test', 'FTP://files.example.com/a', 'blob:https://example.com/id', 'custom+app://open' );
+		foreach ( $schemes as $url ) {
+			$this->assertSame( array(), $this->parser->parse( '<a href="  ' . $url . '  ">Link</a>' ), $url );
+		}
+		$this->assertCount( 1, $this->parser->parse( '<a href="//example.com/page">Link</a>' ) );
+		$this->assertCount( 1, $this->parser->parse( '<a href="../page">Link</a>' ) );
+	}
+
+	public function test_parse_restores_the_callers_libxml_error_mode(): void {
+		$original = libxml_use_internal_errors();
+		try {
+			foreach ( array( false, true ) as $mode ) {
+				libxml_use_internal_errors( $mode );
+				$this->parser->parse( '<a href="https://example.com"><invalid>Link</a>' );
+				$this->assertSame( $mode, libxml_use_internal_errors() );
+			}
+		} finally {
+			libxml_use_internal_errors( $original );
+		}
+	}
 }

@@ -66,15 +66,15 @@ class InternalLinkCheckerTest extends TestCase {
 		$this->assertNull( $result['error'] );
 	}
 
-	public function test_check_nonexistent_page_returns_assumed_ok(): void {
+	public function test_check_unknown_page_is_unverified_without_http_fallback(): void {
 		UrlToPostIdStub::$next_id = 0;
 
 		$result = $this->checker->check( '/unknown-page/' );
 
-		// Unresolvable URLs are assumed OK (to avoid false positives).
-		$this->assertSame( 200, $result['http_status'] );
-		$this->assertSame( LinkStatus::Ok, $result['status_category'] );
-		$this->assertSame( 'unresolvable_assumed_ok', $result['error'] );
+		// Unknown routes must not be reported as an observed HTTP 200.
+		$this->assertSame( 0, $result['http_status'] );
+		$this->assertSame( LinkStatus::Skipped, $result['status_category'] );
+		$this->assertSame( 'internal_unverified', $result['error'] );
 	}
 
 	public function test_check_draft_page_returns_broken(): void {
@@ -144,7 +144,34 @@ class InternalLinkCheckerTest extends TestCase {
 		// Relative URL should be resolved against site_url.
 		$result = $this->checker->check( '/contact/' );
 
-		// Should succeed (unresolvable = assumed OK).
-		$this->assertSame( 200, $result['http_status'] );
+		// Relative resolution does not invent a successful HTTP response.
+		$this->assertSame( LinkStatus::Skipped, $result['status_category'] );
 	}
+	public function test_unknown_route_uses_safe_http_fallback_and_returns_real_404(): void {
+		$http = $this->createMock( \MuriLinkTracker\Scanner\HttpChecker::class );
+		$expected = array( 'http_status' => 404, 'status_category' => LinkStatus::Broken );
+		$http->expects( $this->once() )->method( 'check' )->with( 'https://example.com/missing/' )->willReturn( $expected );
+		$checker = new InternalLinkChecker( 'https://example.com', '/tmp/wp-uploads', 'https://example.com/wp-content/uploads', $http );
+		$this->assertSame( $expected, $checker->check( '/missing/' ) );
+	}
+
+	public function test_known_published_page_does_not_make_loopback_request(): void {
+		UrlToPostIdStub::$next_id = 42;
+		$http = $this->createMock( \MuriLinkTracker\Scanner\HttpChecker::class );
+		$http->expects( $this->never() )->method( 'check' );
+		$checker = new InternalLinkChecker( 'https://example.com', '/tmp/wp-uploads', 'https://example.com/wp-content/uploads', $http );
+		$this->assertSame( LinkStatus::Ok, $checker->check( '/published/' )['status_category'] );
+	}
+
+	public function test_media_query_and_fragment_do_not_hide_existing_file(): void {
+		file_put_contents( '/tmp/wp-uploads/2024/01/photo.jpg', 'fake image' );
+		$result = $this->checker->check( 'https://example.com/wp-content/uploads/2024/01/photo.jpg?ver=2#image' );
+		$this->assertSame( LinkStatus::Ok, $result['status_category'] );
+	}
+
+	public function test_media_traversal_cannot_probe_files_outside_uploads(): void {
+		$result = $this->checker->check( 'https://example.com/wp-content/uploads/../../etc/passwd' );
+		$this->assertSame( LinkStatus::Broken, $result['status_category'] );
+	}
+
 }

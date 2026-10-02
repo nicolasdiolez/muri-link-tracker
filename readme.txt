@@ -12,9 +12,9 @@ A high-performance link checker for WordPress with affiliate detection, redirect
 
 == Description ==
 
-**Muri Link Tracker** is a powerful WordPress plugin designed to help site owners maintain their SEO health and user experience by identifying broken links, analyzing redirect chains, and detecting affiliate patterns — all without slowing down your site.
+**Muri Link Tracker** is a powerful WordPress plugin designed to help site owners maintain their SEO health and user experience by identifying broken links, analyzing redirect chains, and detecting affiliate patterns.
 
-Whether your site has 100 or 100,000 links, Muri Link Tracker scans them in the background and gives you a real-time dashboard to act on what matters: broken URLs, redirect loops, and missing rel attributes.
+Muri Link Tracker scans published content in bounded background jobs and gives you a dashboard to act on what matters: broken URLs, redirect loops, and missing rel attributes.
 
 = Key Features =
 
@@ -27,7 +27,7 @@ Whether your site has 100 or 100,000 links, Muri Link Tracker scans them in the 
 * **Modern React Dashboard** — Real-time statistics, quick filter tabs (All / Broken / Redirects / OK / Pending), inline editing, and bulk actions in a polished admin interface built with the WordPress design system.
 * **Smart Filtering & Search** — Filter by status, link type, or affiliate network, and search across URLs and anchor text instantly.
 * **CSV Export** — Export your full link inventory with active filters applied, perfect for reporting and auditing.
-* **Silent Link Editing** — Fix or remove a link directly from the dashboard without bumping the post's modified date or creating revision clutter.
+* **Silent Link Editing** — Fix or remove a link directly from the dashboard without changing the post's modified date, with a native WordPress revision for recovery.
 * **Configurable to Any Host** — Adjustable batch sizes, timeouts, request delays, and recheck intervals to fit shared hosting or dedicated servers.
 * **Scan Resume** — Interrupted scans pick up exactly where they left off.
 * **Gutenberg-Aware** — Extracts links from Gutenberg blocks with block-level metadata, including button blocks and navigation links.
@@ -68,7 +68,7 @@ The full source code, including React/JavaScript source files and build configur
 
 = How does the scanning work? =
 
-Muri Link Tracker uses WordPress Action Scheduler to process scans in the background. Posts are scanned in configurable batches, and each link is verified via HTTP HEAD request with GET fallback. This ensures your site remains responsive during scans, even on shared hosting.
+Muri Link Tracker uses WordPress Action Scheduler to process scans in the background. Posts are scanned in configurable batches, and each link is verified via HTTP HEAD request with GET fallback. Progress is stored in dedicated database tables and advances on the server, even after you close the dashboard. Action Scheduler needs working WP-Cron or a server cron runner; low-traffic sites should configure a server cron.
 
 = What's the difference between Full Scan and Delta Scan? =
 
@@ -76,7 +76,7 @@ Muri Link Tracker uses WordPress Action Scheduler to process scans in the backgr
 
 = Does it slow down my site? =
 
-No. All scanning and link checking happens in background processes via Action Scheduler. The plugin also includes configurable request delays and batch sizes to prevent overloading your server, and it automatically adapts batch size to available memory.
+Scans consume server resources. Work is split into configurable extraction batches and one HTTP URL per checking job, with a request budget and response-size limit. Adjust batch size, timeout and request delay for your hosting. Dashboard requests only read progress; they do not execute background jobs.
 
 = What affiliate networks does it detect? =
 
@@ -92,7 +92,7 @@ Yes. In Settings, enter a comma-separated list of post types (e.g., `post, page,
 
 = What happens when I delete or edit a link? =
 
-When you edit or delete a link through the plugin, it updates the `<a>` tag directly in the post content. The post's `modified_date` is **not** updated and no revision is created, so your SEO timestamps and revision history stay clean. Remember to purge your page cache after bulk edits if you use a caching plugin.
+Editing updates the matching anchor attributes in content and excerpts while preserving unrelated HTML, images and formatting. Removing a link unwraps the anchor and preserves its children. The post's modification date stays unchanged. A native WordPress revision stores the previous content and excerpt, and the content and link inventory are committed together. Global editing requires InnoDB tables, permission to edit every source, and revisions enabled for those posts. Links that also occur in custom fields or block attributes are read only: edit them in WordPress, then rescan. Restore an earlier version through the article's WordPress Revisions screen and run a Delta Scan to refresh the inventory. Purge your page cache after edits if you use a caching plugin.
 
 = Can I cancel a scan that's already running? =
 
@@ -104,7 +104,7 @@ Yes. If a scan is cancelled, crashes, or is interrupted by a server restart, you
 
 = How often are links re-checked? =
 
-You can configure a **Recheck Interval** (in days) from the Settings panel. Default is 7 days. Links past that threshold are automatically re-verified on the next Delta or Full Scan.
+You can configure a **Recheck Interval** (in days) from the Settings panel. Default is 7 days. A daily background action checks links older than that threshold. Delta scans check new or stale URLs; Full Scan checks every URL. Cancelled or failed scans wait for your explicit resume or a new scan.
 
 = Is the plugin translation-ready? =
 
@@ -120,7 +120,31 @@ Yes. All user-facing strings are internationalized and the text domain is `muri-
 6. **Real-Time Scan Progress** — Watch scans unfold live: progress bar, item counters, and summary stats update in real time. Cancel at any moment — partial results are preserved and the scan can be resumed later.
 7. **Fine-Tune to Your Hosting** — The Settings panel lets you define which post types to scan, adjust batch size, set HTTP request timeouts and delays, and configure the automatic recheck interval to match any hosting environment.
 
+= URL exclusions and custom fields =
+
+Exclusions match an exact URL or a pattern with `*` for any sequence of characters (for example `https://example.com/private/*`). They apply to extraction and HTTP verification. Custom field scanning reads public, non-protected text values and does not permit global edits of those fields.
+
+= Build and verify from source =
+
+Run `composer install`, `npm ci` and `npm run build` before installing a checkout. Run `vendor/bin/phpunit`, `vendor/bin/phpstan analyse --memory-limit=1G`, `npm run test:js -- --runInBand`, `npm run lint:js` and `npm run lint:css` to check changes. CI also exercises WordPress 6.9 with MariaDB 11.4 using `tests/integration/queue.php` and `tests/integration/content-editing.php`. These WP-CLI fixtures require a disposable local installation and must never run on a live site.
+
+= Upgrading from the original queue =
+
+The plugin adds scan and checkpoint tables automatically (database schema version 2). Existing link records are retained. Old transient-based scans cannot be resumed into the new queue: start a Full Scan once after updating. Keep normal database backups before updates. Daily maintenance removes occurrences from deleted or unpublished posts. After changing exclusions, selected post types, or restoring an article revision, run a Full Scan to rebuild the relevant inventory.
+
+= HTTP verification limits =
+
+Requests use WordPress's safe HTTP API, verify TLS and revalidate every redirect. Private, loopback, reserved and unresolved destinations are skipped. Unknown public internal URLs are verified over HTTP instead of being assumed valid. DNS checks are defence in depth; DNS rebinding protection also depends on outbound network controls at the hosting provider. A successful status check does not establish that a destination is trustworthy.
+
 == Changelog ==
+
+= Unreleased =
+* Harden HTTP destination validation, redirects, timeouts and bounded response reads.
+* Persist resumable scans with server-driven transitions, retries and stale-worker protection.
+* Preserve source HTML and per-occurrence rel values; add transactional edits, native recovery revisions and URL merging.
+* Stabilize dashboard requests, filters, confirmations, settings and error recovery; include DataViews styles.
+* Bound CSV memory and paginate exports by ID while retaining active filters.
+* Update compatible dependencies and add unit, integration and CI checks.
 
 = 1.0.0 =
 * Initial release.

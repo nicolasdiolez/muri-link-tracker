@@ -63,6 +63,9 @@ class InstancesRepository {
 			)
 		);
 
+		if ( ! is_array( $rows ) || ! empty( $this->wpdb->last_error ) ) {
+			throw new \RuntimeException( 'Could not read link occurrences.' );
+		}
 		return array_map( array( LinkInstance::class, 'from_db_row' ), $rows );
 	}
 
@@ -87,6 +90,9 @@ class InstancesRepository {
 			)
 		);
 
+		if ( ! is_array( $rows ) || ! empty( $this->wpdb->last_error ) ) {
+			throw new \RuntimeException( 'Could not read link occurrences.' );
+		}
 		return array_map( array( LinkInstance::class, 'from_db_row' ), $rows );
 	}
 
@@ -111,7 +117,10 @@ class InstancesRepository {
 			)
 		);
 
-		return false !== $deleted ? $deleted : 0;
+		if ( false === $deleted ) {
+			throw new \RuntimeException( 'Could not delete link occurrences.' );
+		}
+		return (int) $deleted;
 	}
 
 	/**
@@ -125,100 +134,95 @@ class InstancesRepository {
 	 *                         is_dofollow, link_position, block_name.
 	 * @return void
 	 */
-	public function bulk_insert( array $instances ): void {
+	public function bulk_insert( array $instances, bool $transaction = true ): void {
 		if ( empty( $instances ) ) {
 			return;
 		}
-
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		$this->wpdb->query( 'SET autocommit = 0' );
-
-		foreach ( $instances as $instance ) {
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-			$this->wpdb->query(
-				// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-				$this->wpdb->prepare(
-					'INSERT INTO %i (link_id, post_id, source_type, anchor_text, rel_nofollow, rel_sponsored, rel_ugc, is_dofollow, link_position, block_name) VALUES (%d, %d, %s, %s, %d, %d, %d, %d, %d, %s)',
-					// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-					$this->table,
-					// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-					$instance['link_id'],
-					// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-					$instance['post_id'],
-					// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-					$instance['source_type'],
-					// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-					$instance['anchor_text'],
-					(int) $instance['rel_nofollow'],
-					(int) $instance['rel_sponsored'],
-					(int) $instance['rel_ugc'],
-					(int) $instance['is_dofollow'],
-					// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-					$instance['link_position'],
-					// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-					$instance['block_name']
-				)
-			);
-		}
-
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		$this->wpdb->query( 'COMMIT' );
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		$this->wpdb->query( 'SET autocommit = 1' );
+		$this->write_atomically( fn() => $this->insert_rows( $instances ), $transaction );
 	}
 
 	/**
-	 * Syncs instances for a post: deletes old ones, inserts new ones.
+	 * Replace occurrences atomically; false lets the content editor own the transaction.
 	 *
-	 * Uses a transactional delete-and-reinsert strategy for atomicity.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param int   $post_id   WordPress post ID.
-	 * @param array $instances New instances to insert. Each element is an associative
-	 *                         array with keys: link_id, post_id, source_type,
-	 *                         anchor_text, rel_nofollow, rel_sponsored, rel_ugc,
-	 *                         is_dofollow, link_position, block_name.
-	 * @return void
+	 * @param int   $post_id Source post.
+	 * @param array $instances Replacement rows.
+	 * @param bool  $transaction Whether to manage a transaction.
 	 */
-	public function sync_for_post( int $post_id, array $instances ): void {
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		$this->wpdb->query( 'SET autocommit = 0' );
-
-		$this->delete_by_post( $post_id );
-
+	public function sync_for_post( int $post_id, array $instances, bool $transaction = true ): void {
 		foreach ( $instances as $instance ) {
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-			$this->wpdb->query(
-				// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-				$this->wpdb->prepare(
-					'INSERT INTO %i (link_id, post_id, source_type, anchor_text, rel_nofollow, rel_sponsored, rel_ugc, is_dofollow, link_position, block_name) VALUES (%d, %d, %s, %s, %d, %d, %d, %d, %d, %s)',
-					// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-					$this->table,
-					// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-					$instance['link_id'],
-					// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-					$instance['post_id'],
-					// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-					$instance['source_type'],
-					// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-					$instance['anchor_text'],
-					(int) $instance['rel_nofollow'],
-					(int) $instance['rel_sponsored'],
-					(int) $instance['rel_ugc'],
-					(int) $instance['is_dofollow'],
-					// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-					$instance['link_position'],
-					// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-					$instance['block_name']
-				)
-			);
+			if ( (int) $instance['post_id'] !== $post_id ) {
+				throw new \InvalidArgumentException( 'An occurrence belongs to a different post.' );
+			}
 		}
+		$this->write_atomically(
+			function () use ( $post_id, $instances ): void {
+				$this->delete_by_post( $post_id );
+				$this->insert_rows( $instances );
+			},
+			$transaction
+		);
+	}
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		$this->wpdb->query( 'COMMIT' );
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		$this->wpdb->query( 'SET autocommit = 1' );
+	private function write_atomically( callable $write, bool $transaction ): void {
+		if ( $transaction ) {
+			$this->checked_query( 'START TRANSACTION' );
+		}
+		try {
+			$write();
+			if ( $transaction ) {
+				$this->checked_query( 'COMMIT' );
+			}
+		} catch ( \Throwable $error ) {
+			if ( $transaction ) {
+				$this->wpdb->query( 'ROLLBACK' );
+			}
+			throw $error;
+		}
+	}
+
+	/** @param array $instances Occurrences to insert in bounded groups. */
+	private function insert_rows( array $instances ): void {
+		foreach ( array_chunk( $instances, 100 ) as $chunk ) {
+			$values = array();
+			$params = array( $this->table );
+			foreach ( $chunk as $row ) {
+				if ( (int) $row['link_id'] < 1 || (int) $row['post_id'] < 1 ) {
+					throw new \InvalidArgumentException( 'An occurrence needs an existing link and post.' );
+				}
+				$position = $row['link_position'] ?? null;
+				$values[] = '( %d, %d, %s, %s, %d, %d, %d, %d, ' . ( null === $position ? 'NULL' : '%d' ) . ', %s )';
+				array_push(
+					$params,
+					(int) $row['link_id'], (int) $row['post_id'], (string) $row['source_type'],
+					(string) ( $row['anchor_text'] ?? '' ), (int) $row['rel_nofollow'],
+					(int) $row['rel_sponsored'], (int) $row['rel_ugc'], (int) $row['is_dofollow']
+				);
+				if ( null !== $position ) {
+					$params[] = (int) $position;
+				}
+				$params[] = (string) ( $row['block_name'] ?? '' );
+			}
+			$sql = 'INSERT INTO %i (link_id, post_id, source_type, anchor_text, rel_nofollow, rel_sponsored, rel_ugc, is_dofollow, link_position, block_name) VALUES ' . implode( ', ', $values );
+			$this->checked_query( $this->wpdb->prepare( $sql, ...$params ) );
+		}
+	}
+
+	/** Removes occurrences from deleted or unpublished sources. */
+	public function cleanup_unpublished(): int {
+		return $this->checked_query(
+			$this->wpdb->prepare(
+				'DELETE i FROM %i i LEFT JOIN %i p ON p.ID = i.post_id WHERE p.ID IS NULL OR p.post_status <> %s',
+				$this->table, $this->wpdb->posts, 'publish'
+			)
+		);
+	}
+
+	private function checked_query( string $sql ): int {
+		$result = $this->wpdb->query( $sql );
+		if ( false === $result ) {
+			throw new \RuntimeException( 'Could not update link occurrences.' );
+		}
+		return (int) $result;
 	}
 
 	/**
@@ -295,6 +299,9 @@ class InstancesRepository {
 			$this->wpdb->prepare( 'DELETE FROM %i', $this->table )
 		);
 
-		return false !== $deleted ? $deleted : 0;
+		if ( false === $deleted ) {
+			throw new \RuntimeException( 'Could not delete link occurrences.' );
+		}
+		return (int) $deleted;
 	}
 }

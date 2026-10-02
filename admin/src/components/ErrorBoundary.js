@@ -1,7 +1,7 @@
 /**
  * ErrorBoundary component — Catches React rendering errors and shows a recovery UI.
  *
- * @package MuriLinkTracker
+ * @package
  * @since   1.0.0
  */
 

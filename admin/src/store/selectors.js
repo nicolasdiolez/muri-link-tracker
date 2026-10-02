@@ -1,3 +1,4 @@
+import { viewToApiParams } from '../utils/link-view';
 /**
  * Store selectors.
  *
@@ -35,4 +36,17 @@ export function getCurrentLink( state ) {
 
 export function isLoading( state, key ) {
 	return !! state.isLoading[ key ];
+}
+
+export function getError( state, key ) {
+	return state.errors?.[ key ] || null;
+}
+export function getLinksView( state ) {
+	return state.linksView;
+}
+export function getLinksQuery( state ) {
+	return viewToApiParams( state.linksView );
+}
+export function getRechecks( state ) {
+	return state.rechecks;
 }

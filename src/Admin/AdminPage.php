@@ -81,6 +81,7 @@ class AdminPage {
 			$asset['version'],
 			true
 		);
+		wp_set_script_translations( 'mltr-admin', 'muri-link-tracker', MLTR_PLUGIN_DIR . 'languages' );
 
 		if ( file_exists( MLTR_PLUGIN_DIR . 'build/index.css' ) ) {
 			wp_enqueue_style(

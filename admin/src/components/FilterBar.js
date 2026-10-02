@@ -19,10 +19,16 @@ const QUICK_FILTERS = [
 const FilterBar = ( { currentStatus, onStatusChange } ) => {
 	return (
 		<div className="mltr-filter-bar">
-			<ButtonGroup>
+			<ButtonGroup
+				aria-label={ __(
+					'Filter links by status',
+					'muri-link-tracker'
+				) }
+			>
 				{ QUICK_FILTERS.map( ( filter ) => (
 					<Button
 						key={ filter.key }
+						aria-pressed={ currentStatus === filter.key }
 						variant={
 							currentStatus === filter.key
 								? 'primary'

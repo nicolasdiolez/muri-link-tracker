@@ -1,3 +1,4 @@
+import { DEFAULT_VIEW } from '../../utils/link-view';
 import reducer from '../reducer';
 
 const DEFAULT_STATE = {
@@ -9,6 +10,9 @@ const DEFAULT_STATE = {
 	settings: null,
 	currentLink: null,
 	isLoading: {},
+	errors: {},
+	linksView: DEFAULT_VIEW,
+	rechecks: [],
 };
 
 describe( 'store/reducer', () => {
