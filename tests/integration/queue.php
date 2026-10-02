@@ -28,6 +28,12 @@ $http = static function ( $pre, $args, $url ) use ( &$requests ) {
 };
 add_filter( 'pre_http_request', $http, 10, 3 );
 try {
+	// Migration must validate the physical schema and explicitly request InnoDB.
+	( new \MuriLinkTracker\Database\Migrator() )->create_tables();
+	foreach ( array( 'mltr_links', 'mltr_instances', 'mltr_scans', 'mltr_scan_jobs' ) as $suffix ) {
+		$table = $wpdb->get_row( $wpdb->prepare( 'SHOW TABLE STATUS WHERE Name = %s', $wpdb->prefix . $suffix ) );
+		$assert( null !== $table && 'innodb' === strtolower( $table->Engine ), 'Fresh test tables must use InnoDB: ' . $suffix );
+	}
 	$orchestrator->reset();
 	update_option( 'mltr_settings', array_merge( $original_settings, array( 'batch_size' => 10, 'http_request_delay' => 0, 'scan_post_types' => array( 'post' ), 'excluded_urls' => array( 'https://example.com/excluded*' ) ) ) );
 	for ( $i = 0; $i < 23; ++$i ) {

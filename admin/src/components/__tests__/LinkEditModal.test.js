@@ -154,7 +154,7 @@ describe( 'LinkEditModal', () => {
 
 	it( 'sends only the changed URL, preserving all rel attributes by omission', async () => {
 		render( <LinkEditModal linkId={ 42 } onClose={ onClose } /> );
-		changeUrl( '  https://example.com/new  ' );
+		changeUrl( 'https://example.com/new' );
 		fireEvent.click( screen.getByRole( 'button', { name: 'Save' } ) );
 		await waitFor( () => expect( onClose ).toHaveBeenCalledWith( true ) );
 		expect( mockUpdateLink ).toHaveBeenCalledWith( 42, {
@@ -221,7 +221,16 @@ describe( 'LinkEditModal', () => {
 	it.each( [
 		'javascript:alert(1)',
 		'ftp://example.com/file',
-		'/relative',
+		'//example.com/path',
+		'https://user:password@example.com/path',
+		'https://user@example.com/path',
+		'https://@example.com/path',
+		'https:example.com/path',
+		'https:///example.com/path',
+		'/path with spaces',
+		'/path\\to-page',
+		'/path\u0001to-page',
+		'/path\u007fto-page',
 		'',
 		'not a url',
 	] )( 'blocks invalid destination %s', ( value ) => {
@@ -233,6 +242,31 @@ describe( 'LinkEditModal', () => {
 		);
 		expect( screen.getByRole( 'button', { name: 'Save' } ) ).toBeDisabled();
 		expect( mockUpdateLink ).not.toHaveBeenCalled();
+	} );
+
+	it( 'allows rel-only edits to an existing site-relative URL', async () => {
+		mockSelectValues.getCurrentLink = { ...MOCK_LINK, url: '/hello' };
+		render( <LinkEditModal linkId={ 42 } onClose={ onClose } /> );
+		harmonize();
+		fireEvent.click( screen.getByLabelText( 'sponsored' ) );
+		expect( screen.getByRole( 'button', { name: 'Save' } ) ).toBeEnabled();
+		fireEvent.click( screen.getByRole( 'button', { name: 'Save' } ) );
+		await waitFor( () =>
+			expect( mockUpdateLink ).toHaveBeenCalledWith( 42, {
+				rel: 'nofollow sponsored',
+			} )
+		);
+	} );
+
+	it( 'allows changing the URL to a site-relative path', async () => {
+		render( <LinkEditModal linkId={ 42 } onClose={ onClose } /> );
+		changeUrl( '/new-page?source=tracker#details' );
+		fireEvent.click( screen.getByRole( 'button', { name: 'Save' } ) );
+		await waitFor( () =>
+			expect( mockUpdateLink ).toHaveBeenCalledWith( 42, {
+				url: '/new-page?source=tracker#details',
+			} )
+		);
 	} );
 
 	it( 'asks before discarding dirty edits and allows keeping them', () => {

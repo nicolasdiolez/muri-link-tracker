@@ -53,6 +53,34 @@ const safeHref = ( value, allowRelative = false ) => {
 	}
 };
 
+// Editing also accepts site-relative paths, following the REST validation rules.
+const validEditableUrl = ( value ) => {
+	if ( ! value ) {
+		return false;
+	}
+	for ( const character of value ) {
+		const code = character.charCodeAt( 0 );
+		if ( code <= 32 || code === 127 || character === '\\' ) {
+			return false;
+		}
+	}
+	if ( value.startsWith( '/' ) ) {
+		return ! value.startsWith( '//' );
+	}
+	const authority = value.match( /^https?:\/\/([^/?#]+)/i )?.[ 1 ];
+	if ( ! authority || authority.includes( '@' ) ) {
+		return false;
+	}
+	try {
+		const parsed = new URL( value );
+		return Boolean(
+			parsed.hostname && ! parsed.username && ! parsed.password
+		);
+	} catch {
+		return false;
+	}
+};
+
 const SourceLink = ( { href, children, allowRelative = false } ) => {
 	const safeUrl = safeHref( href, allowRelative );
 	return safeUrl ? (
@@ -91,7 +119,7 @@ const LinkEditModal = ( { linkId, onClose } ) => {
 		( instance ) => instance.editable === false
 	);
 	const dirty = url.trim() !== originalUrl || harmonizeRel;
-	const invalidUrl = ! safeHref( url.trim() );
+	const invalidUrl = ! validEditableUrl( url );
 	const ready = ! loading && ! error && link && formLinkId === linkId;
 
 	useEffect( () => {
@@ -231,7 +259,7 @@ const LinkEditModal = ( { linkId, onClose } ) => {
 						help={
 							invalidUrl
 								? __(
-										'Enter a complete URL beginning with http:// or https://.',
+										'Enter an HTTP(S) URL or a site-relative path such as /page, without spaces or credentials.',
 										'muri-link-tracker'
 								  )
 								: __(

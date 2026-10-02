@@ -93,7 +93,17 @@ class Plugin {
 	 * @since 1.0.0
 	 */
 	public function register(): void {
-		( new Migrator() )->maybe_migrate();
+		try {
+			( new Migrator() )->maybe_migrate();
+		} catch ( \RuntimeException $error ) {
+			// A failed plugin migration must not take the public site offline.
+			add_action( 'admin_notices', static function () use ( $error ): void {
+				if ( current_user_can( 'manage_options' ) ) {
+					echo '<div class="notice notice-error"><p>' . esc_html( $error->getMessage() ) . '</p></div>';
+				}
+			} );
+			return;
+		}
 		// Queue system must register on ALL requests (not just admin)
 		// because Action Scheduler processes actions via WP-Cron/frontend.
 		$this->register_queue();
