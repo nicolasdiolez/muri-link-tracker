@@ -58,7 +58,7 @@ class ScanController extends \WP_REST_Controller {
 		\register_rest_route(
 			$this->namespace,
 			'/' . $this->rest_base . '/start',
-array(
+			array(
 				array(
 					'methods'             => \WP_REST_Server::CREATABLE,
 					'callback'            => $this->start_scan( ... ),
@@ -78,7 +78,7 @@ array(
 		\register_rest_route(
 			$this->namespace,
 			'/' . $this->rest_base . '/status',
-array(
+			array(
 				array(
 					'methods'             => \WP_REST_Server::READABLE,
 					'callback'            => $this->get_status( ... ),
@@ -90,7 +90,7 @@ array(
 		\register_rest_route(
 			$this->namespace,
 			'/' . $this->rest_base . '/cancel',
-array(
+			array(
 				array(
 					'methods'             => \WP_REST_Server::CREATABLE,
 					'callback'            => $this->cancel_scan( ... ),
@@ -116,7 +116,7 @@ array(
 		\register_rest_route(
 			$this->namespace,
 			'/' . $this->rest_base . '/resume',
-array(
+			array(
 				array(
 					'methods'             => \WP_REST_Server::CREATABLE,
 					'callback'            => $this->resume_scan( ... ),
@@ -128,7 +128,7 @@ array(
 		\register_rest_route(
 			$this->namespace,
 			'/' . $this->rest_base . '/reset',
-array(
+			array(
 				array(
 					'methods'             => \WP_REST_Server::CREATABLE,
 					'callback'            => $this->reset_scan( ... ),
@@ -187,29 +187,31 @@ array(
 	 * @return \WP_REST_Response|\WP_Error
 	 */
 	public function start_scan( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
-		return $this->guard( function () use ( $request ): \WP_REST_Response|\WP_Error {
-			$rate_error = $this->check_rate_limit( 'start' );
-			if ( null !== $rate_error ) {
-				return $rate_error;
+		return $this->guard(
+			function () use ( $request ): \WP_REST_Response|\WP_Error {
+				$rate_error = $this->check_rate_limit( 'start' );
+				if ( null !== $rate_error ) {
+						return $rate_error;
+				}
+
+				$current_status = $this->orchestrator->get_status();
+
+				if ( 'running' === $current_status['status'] ) {
+					return new \WP_Error(
+						'mltr_scan_already_running',
+						\__( 'A scan is already in progress.', 'muri-link-tracker' ),
+						array( 'status' => 409 )
+					);
+				}
+
+				$scan_type    = $request->get_param( 'scan_type' );
+				$scan_batches = $this->orchestrator->start_scan( $scan_type );
+
+				$status                = $this->orchestrator->get_status();
+				$status['scanBatches'] = $scan_batches;
+				return new \WP_REST_Response( $status, 200 );
 			}
-
-			$current_status = $this->orchestrator->get_status();
-
-			if ( 'running' === $current_status['status'] ) {
-				return new \WP_Error(
-					'mltr_scan_already_running',
-					\__( 'A scan is already in progress.', 'muri-link-tracker' ),
-					array( 'status' => 409 )
-				);
-			}
-
-			$scan_type    = $request->get_param( 'scan_type' );
-			$scan_batches = $this->orchestrator->start_scan( $scan_type );
-
-			$status = $this->orchestrator->get_status();
-			$status['scanBatches'] = $scan_batches;
-			return new \WP_REST_Response( $status, 200 );
-		} );
+		);
 	}
 
 	/**
@@ -221,9 +223,11 @@ array(
 	 * @return \WP_REST_Response
 	 */
 	public function get_status( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
-		return $this->guard( function (): \WP_REST_Response {
-			return new \WP_REST_Response( $this->orchestrator->get_status(), 200 );
-		} );
+		return $this->guard(
+			function (): \WP_REST_Response {
+				return new \WP_REST_Response( $this->orchestrator->get_status(), 200 );
+			}
+		);
 	}
 
 	/**
@@ -235,11 +239,13 @@ array(
 	 * @return \WP_REST_Response
 	 */
 	public function cancel_scan( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
-		return $this->guard( function (): \WP_REST_Response {
-			$this->orchestrator->cancel();
+		return $this->guard(
+			function (): \WP_REST_Response {
+				$this->orchestrator->cancel();
 
-			return new \WP_REST_Response( $this->orchestrator->get_status(), 200 );
-		} );
+				return new \WP_REST_Response( $this->orchestrator->get_status(), 200 );
+			}
+		);
 	}
 
 	/**
@@ -251,24 +257,26 @@ array(
 	 * @return \WP_REST_Response|\WP_Error
 	 */
 	public function resume_scan( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
-		return $this->guard( function (): \WP_REST_Response|\WP_Error {
-			$rate_error = $this->check_rate_limit( 'resume' );
-			if ( null !== $rate_error ) {
-				return $rate_error;
+		return $this->guard(
+			function (): \WP_REST_Response|\WP_Error {
+				$rate_error = $this->check_rate_limit( 'resume' );
+				if ( null !== $rate_error ) {
+						return $rate_error;
+				}
+
+				$resumed = $this->orchestrator->resume();
+
+				if ( ! $resumed ) {
+					return new \WP_Error(
+						'mltr_scan_cannot_resume',
+						\__( 'Scan cannot be resumed. It may have already finished or was never started.', 'muri-link-tracker' ),
+						array( 'status' => 400 )
+					);
+				}
+
+				return new \WP_REST_Response( $this->orchestrator->get_status(), 200 );
 			}
-
-			$resumed = $this->orchestrator->resume();
-
-			if ( ! $resumed ) {
-				return new \WP_Error(
-					'mltr_scan_cannot_resume',
-					\__( 'Scan cannot be resumed. It may have already finished or was never started.', 'muri-link-tracker' ),
-					array( 'status' => 400 )
-				);
-			}
-
-			return new \WP_REST_Response( $this->orchestrator->get_status(), 200 );
-		} );
+		);
 	}
 
 	/**
@@ -280,16 +288,18 @@ array(
 	 * @return \WP_REST_Response
 	 */
 	public function reset_scan( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
-		return $this->guard( function (): \WP_REST_Response|\WP_Error {
-			$rate_error = $this->check_rate_limit( 'reset' );
-			if ( null !== $rate_error ) {
-				return $rate_error;
+		return $this->guard(
+			function (): \WP_REST_Response|\WP_Error {
+				$rate_error = $this->check_rate_limit( 'reset' );
+				if ( null !== $rate_error ) {
+						return $rate_error;
+				}
+
+				$this->orchestrator->reset();
+
+				return new \WP_REST_Response( $this->orchestrator->get_status(), 200 );
 			}
-
-			$this->orchestrator->reset();
-
-			return new \WP_REST_Response( $this->orchestrator->get_status(), 200 );
-		} );
+		);
 	}
 
 	/**
@@ -301,26 +311,33 @@ array(
 	 * @return \WP_REST_Response
 	 */
 	public function get_debug_info( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
-		return $this->guard( function (): \WP_REST_Response {
-			return new \WP_REST_Response(
-				array(
-					'scan_status'  => $this->orchestrator->get_status(),
-					'diagnostics'  => \MuriLinkTracker\Queue\SchedulerBootstrap::get_diagnostics(),
-					'php_version'  => \PHP_VERSION,
-					'wp_version'   => \get_bloginfo( 'version' ),
-					'memory_limit' => \defined( 'WP_MEMORY_LIMIT' ) ? \WP_MEMORY_LIMIT : \ini_get( 'memory_limit' ),
-					'timestamp'    => \gmdate( 'c' ),
-				),
-				200
-			);
-		} );
+		return $this->guard(
+			function (): \WP_REST_Response {
+				return new \WP_REST_Response(
+					array(
+						'scan_status'  => $this->orchestrator->get_status(),
+						'diagnostics'  => \MuriLinkTracker\Queue\SchedulerBootstrap::get_diagnostics(),
+						'php_version'  => \PHP_VERSION,
+						'wp_version'   => \get_bloginfo( 'version' ),
+						'memory_limit' => \defined( 'WP_MEMORY_LIMIT' ) ? \WP_MEMORY_LIMIT : \ini_get( 'memory_limit' ),
+						'timestamp'    => \gmdate( 'c' ),
+					),
+					200
+				);
+			}
+		);
 	}
-	/** Translate infrastructure failures to retryable REST errors, without leaking SQL. */
+	/**
+	 * Translate infrastructure failures to retryable REST errors, without leaking SQL.
+	 *
+	 * @param callable $operation REST operation whose infrastructure failures must be translated.
+	 */
 	private function guard( callable $operation ): \WP_REST_Response|\WP_Error {
 		try {
 			return $operation();
 		} catch ( \RuntimeException $error ) {
 			if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Only log infrastructure diagnostics when WP_DEBUG is enabled.
 				error_log( '[MuriLinkTracker] Scan: ' . $error->getMessage() );
 			}
 			$busy = str_contains( $error->getMessage(), 'already in progress' );
@@ -331,5 +348,4 @@ array(
 			);
 		}
 	}
-
 }

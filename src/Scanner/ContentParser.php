@@ -57,7 +57,7 @@ class ContentParser {
 		$position = 0;
 
 		foreach ( $dom->getElementsByTagName( 'a' ) as $node ) {
-			/** @var \DOMElement $node */
+			/** Anchor element returned by the XPath query. @var \DOMElement $node */
 			$href = trim( $node->getAttribute( 'href' ) );
 
 			if ( $this->should_skip_url( $href ) ) {

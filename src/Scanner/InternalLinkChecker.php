@@ -31,6 +31,11 @@ class InternalLinkChecker {
 	 * @since 1.0.0
 	 * @var string
 	 */
+	/**
+	 * Site URL for relative destinations.
+	 *
+	 * @var string
+	 */
 	private readonly string $site_url;
 
 	/**
@@ -54,8 +59,8 @@ class InternalLinkChecker {
 	 *
 	 * @since 1.0.0
 	 *
-	 * @param string $site_url       Optional site URL for testability. Defaults to home_url().
-	 * @param string $upload_basedir Optional upload basedir for testability.
+	 * @param string           $site_url       Optional site URL for testability. Defaults to home_url().
+	 * @param string           $upload_basedir Optional upload basedir for testability.
 	 * @param string           $upload_baseurl Optional upload baseurl for testability.
 	 * @param HttpChecker|null $http_checker   Bounded fallback for unknown routes.
 	 */
@@ -130,8 +135,8 @@ class InternalLinkChecker {
 
 		// 1. Check if this is an upload / media file.
 		if ( $this->is_upload_url( $abs_url ) ) {
-			$exists       = $this->check_upload_file( $abs_url );
-			$elapsed      = (int) \round( ( \microtime( true ) - $start_time ) * 1000 );
+			$exists  = $this->check_upload_file( $abs_url );
+			$elapsed = (int) \round( ( \microtime( true ) - $start_time ) * 1000 );
 			return $this->build_result( $exists, $elapsed );
 		}
 
@@ -153,8 +158,8 @@ class InternalLinkChecker {
 			return $this->http_checker->check( $abs_url );
 		}
 		$result                    = $this->build_result( false, $elapsed, 'internal_unverified' );
-		$result['http_status']      = 0;
-		$result['status_category']  = LinkStatus::Skipped;
+		$result['http_status']     = 0;
+		$result['status_category'] = LinkStatus::Skipped;
 		return $result;
 	}
 

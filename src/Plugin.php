@@ -97,11 +97,14 @@ class Plugin {
 			( new Migrator() )->maybe_migrate();
 		} catch ( \RuntimeException $error ) {
 			// A failed plugin migration must not take the public site offline.
-			add_action( 'admin_notices', static function () use ( $error ): void {
-				if ( current_user_can( 'manage_options' ) ) {
-					echo '<div class="notice notice-error"><p>' . esc_html( $error->getMessage() ) . '</p></div>';
+			add_action(
+				'admin_notices',
+				static function () use ( $error ): void {
+					if ( current_user_can( 'manage_options' ) ) {
+						echo '<div class="notice notice-error"><p>' . esc_html( $error->getMessage() ) . '</p></div>';
+					}
 				}
-			} );
+			);
 			return;
 		}
 		// Queue system must register on ALL requests (not just admin)
@@ -198,10 +201,10 @@ class Plugin {
 		$extractor      = new LinkExtractor( $content_parser, $block_parser, $classifier );
 
 		// HTTP checker.
-		$settings          = \get_option( 'mltr_settings', array() );
-		$timeout           = (int) ( $settings['check_timeout'] ?? 15 );
-		$http_checker      = new HttpChecker( $timeout );
-		$internal_checker  = new InternalLinkChecker( http_checker: new HttpChecker( 5 ) );
+		$settings         = \get_option( 'mltr_settings', array() );
+		$timeout          = (int) ( $settings['check_timeout'] ?? 15 );
+		$http_checker     = new HttpChecker( $timeout );
+		$internal_checker = new InternalLinkChecker( http_checker: new HttpChecker( 5 ) );
 		global $wpdb;
 		$store = new ScanStore( $wpdb );
 
@@ -222,5 +225,4 @@ class Plugin {
 		\add_action( 'action_scheduler_init', array( SchedulerBootstrap::class, 'ensure_recurring_actions' ) );
 		\add_action( 'action_scheduler_ensure_recurring_actions', array( SchedulerBootstrap::class, 'ensure_recurring_actions' ) );
 	}
-
 }

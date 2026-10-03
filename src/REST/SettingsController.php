@@ -186,7 +186,7 @@ class SettingsController extends \WP_REST_Controller {
 		if ( isset( $params['exclude_media'] ) ) {
 			$updated['exclude_media'] = (bool) $params['exclude_media'];
 		}
- 
+
 		if ( isset( $params['density'] ) ) {
 			$value = sanitize_text_field( $params['density'] );
 			if ( ! in_array( $value, array( 'comfortable', 'balanced', 'compact' ), true ) ) {

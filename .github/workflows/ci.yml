@@ -31,6 +31,7 @@ jobs:
           coverage: none
       - run: composer validate --strict
       - run: composer install --prefer-dist --no-interaction --no-progress
+      - run: vendor/bin/phpcs
       - run: vendor/bin/phpunit
       - uses: actions/download-artifact@v4
         with:

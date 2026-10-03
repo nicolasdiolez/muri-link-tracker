@@ -1,5 +1,10 @@
 <?php
-/** Resumable extraction jobs with durable checkpoints and bounded retries. */
+/**
+ * Resumable extraction jobs with durable checkpoints and bounded retries.
+ *
+ * @package MuriLinkTracker
+ */
+
 declare( strict_types=1 );
 
 namespace MuriLinkTracker\Queue;
@@ -13,9 +18,23 @@ use MuriLinkTracker\Models\LinkInstance;
 use MuriLinkTracker\Scanner\LinkClassifier;
 use MuriLinkTracker\Scanner\LinkExtractor;
 
+/** Extracts post links with resumable checkpoints. */
 class ScanJob {
+	/**
+	 * Durable scan state.
+	 *
+	 * @var ScanStore
+	 */
 	private readonly ScanStore $store;
 
+	/**
+	 * Initialize the service dependencies.
+	 *
+	 * @param LinkExtractor       $extractor Post link extractor.
+	 * @param LinksRepository     $links_repo Links repo.
+	 * @param InstancesRepository $instances_repo Instances repo.
+	 * @param ScanStore|null      $store Durable scan state repository.
+	 */
 	public function __construct(
 		private readonly LinkExtractor $extractor,
 		private readonly LinksRepository $links_repo,
@@ -26,37 +45,44 @@ class ScanJob {
 		$this->store = $store ?? new ScanStore( $wpdb );
 	}
 
+	/**
+	 * Process a bounded job while respecting cancellation and resource limits.
+	 *
+	 * @param int|string $job_id Persisted job identifier or legacy manual payload.
+	 */
 	public function process_batch( int|string $job_id ): void {
 		// Pre-upgrade transient deliveries cannot be attributed to a durable run.
 		if ( ! is_numeric( $job_id ) ) {
 			return;
 		}
 		$job_id = (int) $job_id;
-		$token = wp_generate_uuid4();
-		$job = $this->store->exclusive( fn() => $this->store->claim_job( $job_id, $token ) );
+		$token  = wp_generate_uuid4();
+		$job    = $this->store->exclusive( fn() => $this->store->claim_job( $job_id, $token ) );
 		if ( null === $job || 'scanning' !== $job['phase'] ) {
 			return;
 		}
-		$started = microtime( true );
-		$settings = get_option( 'mltr_settings', array() );
+		$started        = microtime( true );
+		$settings       = get_option( 'mltr_settings', array() );
 		$previous_cache = wp_suspend_cache_addition();
 		wp_suspend_cache_addition( true );
 		try {
 			$count = count( $job['item_ids'] );
 			for ( $offset = (int) $job['completed_items']; $offset < $count; ++$offset ) {
-				$processed = $this->store->exclusive( function () use ( $job_id, $token, $job, $offset, $count, $settings ): bool {
-					if ( ! $this->store->owns_job( $job_id, $token ) ) {
-						return false;
+				$processed = $this->store->exclusive(
+					function () use ( $job_id, $token, $job, $offset, $count, $settings ): bool {
+						if ( ! $this->store->owns_job( $job_id, $token ) ) {
+								return false;
+						}
+						$post = get_post( $job['item_ids'][ $offset ] );
+						if ( $post instanceof \WP_Post && 'publish' === $post->post_status ) {
+							$this->process_post( $post, $settings );
+						} else {
+							$this->instances_repo->delete_by_post( (int) $job['item_ids'][ $offset ] );
+						}
+						$this->store->checkpoint( $job_id, $token, $offset + 1, $offset + 1 === $count );
+						return true;
 					}
-					$post = get_post( $job['item_ids'][ $offset ] );
-					if ( $post instanceof \WP_Post && 'publish' === $post->post_status ) {
-						$this->process_post( $post, $settings );
-					} else {
-						$this->instances_repo->delete_by_post( (int) $job['item_ids'][ $offset ] );
-					}
-					$this->store->checkpoint( $job_id, $token, $offset + 1, $offset + 1 === $count );
-					return true;
-				} );
+				);
 				if ( ! $processed ) {
 					return;
 				}
@@ -79,14 +105,25 @@ class ScanJob {
 		}
 	}
 
+	/**
+	 * Check whether this worker has time and memory remaining.
+	 *
+	 * @param float $started Worker start time in seconds.
+	 */
 	private function has_resources( float $started ): bool {
 		$memory = wp_convert_hr_to_bytes( (string) ini_get( 'memory_limit' ) );
 		return ( $memory <= 0 || memory_get_usage( true ) < $memory * 0.8 ) && microtime( true ) - $started < 20;
 	}
 
+	/**
+	 * Extract one post and replace its inventory occurrences.
+	 *
+	 * @param \WP_Post $post Source WordPress post.
+	 * @param array    $settings Plugin scan settings.
+	 */
 	private function process_post( \WP_Post $post, array $settings ): void {
 		$affected_ids = array_fill_keys( array_map( static fn( LinkInstance $instance ): int => $instance->link_id, $this->instances_repo->find_by_post( $post->ID ) ), true );
-		$extracted = $this->extractor->extract_from_post( $post, $settings );
+		$extracted    = $this->extractor->extract_from_post( $post, $settings );
 
 		if ( empty( $extracted ) ) {
 			// No links found: clean up any old instances.
@@ -146,7 +183,11 @@ class ScanJob {
 		do_action( 'mltr/scan/post_processed', $post->ID );
 	}
 
-	/** Recompute after replacement, including URLs whose last sponsored occurrence disappeared. */
+	/**
+	 * Recompute after replacement, including URLs whose last sponsored occurrence disappeared.
+	 *
+	 * @param array $ids Record identifiers for this bounded batch.
+	 */
 	private function refresh_classifications( array $ids ): void {
 		if ( ! $ids ) {
 			return;
@@ -158,5 +199,4 @@ class ScanJob {
 			$this->links_repo->refresh_classification( $link->id, LinkType::External === $classifier->classify_type( $link->url ), $affiliate['is_affiliate'], $affiliate['network'] );
 		}
 	}
-
 }

@@ -189,8 +189,8 @@ class LinkExtractor {
 	 * @return bool True if media URL.
 	 */
 	private function is_media_url( string $url ): bool {
-		$parsed     = \wp_parse_url( $url );
-		$path       = $parsed['path'] ?? '';
+		$parsed = \wp_parse_url( $url );
+		$path   = $parsed['path'] ?? '';
 
 		if ( '' === $path ) {
 			return false;

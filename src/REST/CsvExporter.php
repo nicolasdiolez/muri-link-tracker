@@ -125,7 +125,7 @@ class CsvExporter {
 	 * @param \WP_REST_Server   $server  REST server instance.
 	 * @return bool True if this method served the response, original $served otherwise.
 	 */
-	public function serve_response( bool $served, \WP_HTTP_Response $result, \WP_REST_Request $request, \WP_REST_Server $server ): bool {
+	public function serve_response( bool $served, \WP_HTTP_Response $result, \WP_REST_Request $request, \WP_REST_Server $server ): bool { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Keep the WordPress callback signature.
 		$csv = $result->get_data();
 		if (
 			$served ||

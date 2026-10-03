@@ -20,17 +20,38 @@ use MuriLinkTracker\Models\Enums\LinkStatus;
  */
 class HttpChecker {
 	private const GET_FALLBACK_CODES = array( 403, 405, 501 );
-	private const REDIRECT_CODES = array( 301, 302, 303, 307, 308 );
-	private const MAX_REDIRECTS = 5;
-	private const MAX_RESPONSE_SIZE = 65536;
+	private const REDIRECT_CODES     = array( 301, 302, 303, 307, 308 );
+	private const MAX_REDIRECTS      = 5;
+	private const MAX_RESPONSE_SIZE  = 65536;
 
+	/**
+	 * Site URL for relative destinations.
+	 *
+	 * @var string
+	 */
 	private readonly string $site_url;
+	/**
+	 * HTTP user agent.
+	 *
+	 * @var string
+	 */
 	private readonly string $user_agent;
+	/**
+	 * Total HTTP budget in seconds.
+	 *
+	 * @var int
+	 */
 	private readonly int $timeout;
-	/** @var \Closure(string): array<string>|null */
+	/**
+	 * Optional DNS resolver for isolated tests.
+	 *
+	 * @var \Closure(string): array<string>|null
+	 */
 	private readonly ?\Closure $resolver;
 
 	/**
+	 * Initialize the service dependencies.
+	 *
 	 * @param int           $timeout  Total HTTP budget per URL, in seconds.
 	 * @param string        $site_url Site URL used for relative input URLs.
 	 * @param \Closure|null $resolver Optional DNS resolver for isolated tests.
@@ -43,11 +64,13 @@ class HttpChecker {
 	}
 
 	/**
+	 * Validate a URL and each redirect within a shared HTTP budget.
+	 *
 	 * @param string $url URL to check.
 	 * @return array<string, mixed>
 	 */
 	public function check( string $url ): array {
-		$started  = microtime( true );
+		$started = microtime( true );
 		if ( '' === trim( $url ) ) {
 			return $this->result( $url, $url, $started, array(), 0, LinkStatus::Skipped, 'invalid_url' );
 		}
@@ -74,7 +97,7 @@ class HttpChecker {
 					'method'              => $method,
 					'timeout'             => $remaining,
 					'redirection'         => 0,
-					'reject_unsafe_urls'   => true,
+					'reject_unsafe_urls'  => true,
 					'sslverify'           => true,
 					'user-agent'          => $this->user_agent,
 					'limit_response_size' => self::MAX_RESPONSE_SIZE,
@@ -104,7 +127,10 @@ class HttpChecker {
 					return $this->result( $url, $current, $started, $chain, 0, LinkStatus::Error, 'too_many_redirects' );
 				}
 				$visited[ $current ] = true;
-				$chain[]             = array( 'url' => $current, 'status' => $code );
+				$chain[]             = array(
+					'url'    => $current,
+					'status' => $code,
+				);
 				$next                = $this->absolute_url( trim( $location ), $current );
 				if ( isset( $visited[ $next ] ) ) {
 					return $this->result( $url, $current, $started, $chain, 0, LinkStatus::Error, 'redirect_loop: repeated URL', true );
@@ -134,6 +160,8 @@ class HttpChecker {
 	}
 
 	/**
+	 * Resolve an HTTP destination and discard its fragment.
+	 *
 	 * @param string $url  URL or redirect Location.
 	 * @param string $base Base URL.
 	 * @return string
@@ -187,6 +215,8 @@ class HttpChecker {
 	}
 
 	/**
+	 * Resolve both IPv4 and IPv6 addresses for destination validation.
+	 *
 	 * @param string $host DNS hostname.
 	 * @return string[]
 	 */
@@ -209,6 +239,8 @@ class HttpChecker {
 	}
 
 	/**
+	 * Reject addresses outside publicly routable unicast ranges.
+	 *
 	 * @param string $ip IPv4 or IPv6 address without URL brackets.
 	 * @return bool
 	 */
@@ -231,6 +263,8 @@ class HttpChecker {
 	}
 
 	/**
+	 * Build the normalized HTTP check result.
+	 *
 	 * @param string            $original Original input URL.
 	 * @param string            $current  Last destination.
 	 * @param float             $started  Start timestamp.
@@ -248,7 +282,7 @@ class HttpChecker {
 			'final_url'        => $current !== $original ? $current : null,
 			'response_time'    => (int) round( ( microtime( true ) - $started ) * 1000 ),
 			'redirect_count'   => count( $chain ),
-			'redirect_chain'   => $chain ?: null,
+			'redirect_chain'   => $chain ? $chain : null,
 			'is_redirect_loop' => $loop,
 			'error'            => $error,
 		);

@@ -49,8 +49,8 @@ class ReviewNotice {
 		\add_action( 'admin_notices', $this->maybe_display_notice( ... ) );
 		\add_action( 'wp_ajax_' . self::AJAX_ACTION, $this->ajax_dismiss_notice( ... ) );
 		\add_action( 'admin_enqueue_scripts', $this->enqueue_assets( ... ) );
-		
-		// Track completion via scan controller/orchestrator would be ideal, 
+
+		// Track completion via scan controller/orchestrator would be ideal,
 		// but we can also hook into flc/scan/complete.
 		\add_action( 'mltr/scan/complete', $this->track_scan_completion( ... ) );
 	}

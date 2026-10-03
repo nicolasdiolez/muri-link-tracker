@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <ruleset name="MuriLinkTracker">
-    <description>PHPCS configuration for Flavor Link Checker</description>
+    <description>PHPCS configuration for Muri Link Tracker</description>
 
     <file>./src</file>
     <file>./muri-link-tracker.php</file>
@@ -29,8 +29,8 @@
         <properties>
             <property name="prefixes" type="array">
                 <element value="muri_link_tracker"/>
-                <element value="flc"/>
-                <element value="FLC"/>
+                <element value="mltr"/>
+                <element value="MLTR"/>
                 <element value="MuriLinkTracker"/>
             </property>
         </properties>

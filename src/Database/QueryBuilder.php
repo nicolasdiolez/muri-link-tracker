@@ -74,6 +74,7 @@ class QueryBuilder {
 	 * @return array{items: Link[], total: int}
 	 */
 	public function query( array $args = array() ): array {
+		$wpdb = $this->wpdb;
 		[ $join_sql, $where_sql, $where_params, $select, $needs_join ] = $this->filter_parts( $args );
 
 		// --- Count total ---
@@ -85,13 +86,13 @@ class QueryBuilder {
 			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Query is built with prepare() and whitelisted column names only.
 			$total = (int) $this->wpdb->get_var(
 				// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-				$this->wpdb->prepare( $count_sql, $this->links_table, ...$where_params )
+				$wpdb->prepare( $count_sql, $this->links_table, ...$where_params )
 			);
 		} else {
 			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Query is built with prepare() and whitelisted column names only.
 			$total = (int) $this->wpdb->get_var(
 				// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-				$this->wpdb->prepare( $count_sql, $this->links_table )
+				$wpdb->prepare( $count_sql, $this->links_table )
 			);
 		}
 
@@ -123,7 +124,7 @@ class QueryBuilder {
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Query is built with prepare() and whitelisted column names only.
 		$rows = $this->wpdb->get_results(
 			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-			$this->wpdb->prepare( $query_sql, ...$all_params )
+			$wpdb->prepare( $query_sql, ...$all_params )
 		);
 
 		$items = array_map( array( Link::class, 'from_db_row' ), $rows );
@@ -148,11 +149,13 @@ class QueryBuilder {
 	 * @throws \RuntimeException When a database query fails.
 	 */
 	public function export_batches( array $args = array(), int $batch_size = 100 ): \Generator {
+
+		$wpdb = $this->wpdb;
 		[ $join_sql, $where_sql, $where_params, $select ] = $this->filter_parts( $args );
 		$batch_size                                       = min( max( $batch_size, 1 ), 500 );
 		$maximum_id                                       = (int) $this->wpdb->get_var(
 			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Table identifier is prepared with %i.
-			$this->wpdb->prepare( 'SELECT MAX(id) FROM %i', $this->links_table )
+			$wpdb->prepare( 'SELECT MAX(id) FROM %i', $this->links_table )
 		);
 		if ( '' !== $this->wpdb->last_error ) {
 			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Serialized as a REST error, not rendered as HTML.
@@ -164,7 +167,7 @@ class QueryBuilder {
 		while ( $cursor < $maximum_id ) {
 			$rows = $this->export_rows(
 				// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Shared filters contain only placeholders and fixed SQL fragments.
-				$this->wpdb->prepare( $sql, $this->links_table, ...array_merge( $where_params, array( $cursor, $maximum_id, $batch_size ) ) )
+				$wpdb->prepare( $sql, $this->links_table, ...array_merge( $where_params, array( $cursor, $maximum_id, $batch_size ) ) )
 			);
 			if ( empty( $rows ) ) {
 				break;
@@ -202,6 +205,8 @@ class QueryBuilder {
 	 * @return array{string, string, array, string, bool}
 	 */
 	private function filter_parts( array $args ): array {
+
+		$wpdb          = $this->wpdb;
 		$where_clauses = array();
 		$where_params  = array();
 		$needs_join    = false;
@@ -270,7 +275,7 @@ class QueryBuilder {
 		// --- Build SQL fragments ---
 
 		$join_sql  = $needs_join
-			? $this->wpdb->prepare( ' INNER JOIN %i i ON l.id = i.link_id', $this->instances_table )
+			? $wpdb->prepare( ' INNER JOIN %i i ON l.id = i.link_id', $this->instances_table )
 			: '';
 		$where_sql = ! empty( $where_clauses ) ? ' WHERE ' . implode( ' AND ', $where_clauses ) : '';
 		$select    = $needs_join ? 'DISTINCT l.*' : 'l.*';
