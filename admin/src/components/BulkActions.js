@@ -20,7 +20,7 @@ export function getLinkActions( { onRecheck, onDelete, onEdit } ) {
 	return [
 		{
 			id: 'edit',
-			label: __( 'Edit', 'muri-link-tracker' ),
+			label: __( 'Details & edit', 'muri-link-tracker' ),
 			isPrimary: true,
 			supportsBulk: false,
 			callback: ( items ) => {
@@ -37,7 +37,7 @@ export function getLinkActions( { onRecheck, onDelete, onEdit } ) {
 		},
 		{
 			id: 'delete',
-			label: __( 'Delete', 'muri-link-tracker' ),
+			label: __( 'Remove from content', 'muri-link-tracker' ),
 			isDestructive: true,
 			supportsBulk: true,
 			callback: ( items ) => onDelete( items.map( ( i ) => i.id ) ),

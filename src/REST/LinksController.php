@@ -20,6 +20,7 @@ use MuriLinkTracker\Models\Link;
 use MuriLinkTracker\Models\LinkInstance;
 use MuriLinkTracker\Queue\SchedulerBootstrap;
 use MuriLinkTracker\Scanner\LinkHtmlEditor;
+use MuriLinkTracker\Scanner\LinkEditingService;
 
 /**
  * Handles REST API endpoints for links.
@@ -303,52 +304,18 @@ class LinksController extends \WP_REST_Controller {
 			);
 		}
 
-		$instances     = $this->instances_repo->find_by_link( $link->id );
-		$updated_posts = 0;
-
-		foreach ( $instances as $instance ) {
-			$post = get_post( $instance->post_id );
-			if ( null === $post ) {
-				continue;
-			}
-
-			$updated_content = $this->html_editor->replace_link_in_html(
-				$post->post_content,
-				$link->url,
-				$new_url,
-				$new_rel
-			);
-
-			if ( $updated_content !== $post->post_content ) {
-				$this->html_editor->update_post_content_silently( $post->ID, $updated_content );
-				++$updated_posts;
-			}
+		if ( null !== $new_url && ! self::is_editable_url( $new_url ) ) {
+			return new \WP_Error( 'mltr_invalid_url', __( 'Use an HTTP(S) URL or a site-relative path.', 'muri-link-tracker' ), array( 'status' => 400 ) );
 		}
-
-		// Update the link record in DB if URL changed.
-		if ( null !== $new_url && $new_url !== $link->url ) {
-			global $wpdb;
-			$links_table = $wpdb->prefix . 'mltr_links';
-			$new_hash    = hash( 'sha256', $new_url );
-
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-			$wpdb->query(
-				$wpdb->prepare(
-					"UPDATE %i SET url = %s, url_hash = %s, status_category = 'pending', http_status = NULL, last_checked = NULL WHERE id = %d",
-					$links_table,
-					$new_url,
-					$new_hash,
-					$link->id
-				)
-			);
+		try {
+			$result                = $this->editing_service()->edit( $link, $new_url, $new_rel );
+			$data                  = $this->prepare_link_for_response( $result['link'] );
+			$data['updated_posts'] = $result['updated_posts'];
+			$data['revisions']     = $result['revisions'];
+			return new \WP_REST_Response( $data, 200 );
+		} catch ( \RuntimeException $error ) {
+			return $this->edit_error( $error );
 		}
-
-		// Refresh link data.
-		$updated_link          = $this->links_repo->find( $link->id );
-		$data                  = $this->prepare_link_for_response( $updated_link ?? $link );
-		$data['updated_posts'] = $updated_posts;
-
-		return new \WP_REST_Response( $data, 200 );
 	}
 
 	/**
@@ -371,58 +338,69 @@ class LinksController extends \WP_REST_Controller {
 			);
 		}
 
-		$this->perform_link_deletion( $link );
-
-		return new \WP_REST_Response(
-			array(
-				'deleted' => true,
-				'id'      => $id,
-			),
-			200
-		);
+		try {
+			$result = $this->perform_link_deletion( $link );
+			return new \WP_REST_Response(
+				array(
+					'deleted'       => true,
+					'id'            => $id,
+					'updated_posts' => $result['updated_posts'],
+					'revisions'     => $result['revisions'],
+				),
+				200
+			);
+		} catch ( \RuntimeException $error ) {
+			return $this->edit_error( $error );
+		}
 	}
 
 	/**
 	 * Performs a bulk action on multiple links.
 	 *
 	 * @since 1.0.0
-	 *
 	 * @param \WP_REST_Request $request Full request object.
 	 * @return \WP_REST_Response|\WP_Error
+	 *
+	 * @throws \RuntimeException When state validation or the database operation fails.
 	 */
 	public function bulk_action( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
-		$action = $request->get_param( 'action' );
-		$ids    = $request->get_param( 'ids' );
-
+		$action  = $request->get_param( 'action' );
+		$raw_ids = $request->get_param( 'ids' );
+		if ( ! in_array( $action, array( 'delete', 'recheck' ), true ) || ! is_array( $raw_ids ) || ! $raw_ids || count( $raw_ids ) > 100 ) {
+			return new \WP_Error( 'mltr_invalid_bulk_action', __( 'Choose an action and between 1 and 100 links.', 'muri-link-tracker' ), array( 'status' => 400 ) );
+		}
+		$ids     = array_unique( array_map( 'absint', $raw_ids ) );
 		$results = array(
-			'success' => 0,
-			'failed'  => 0,
+			'success'   => 0,
+			'failed'    => 0,
+			'failures'  => array(),
+			'revisions' => array(),
+			'action'    => $action,
 		);
-
 		foreach ( $ids as $id ) {
-			$id = \absint( $id );
-
-			if ( 'recheck' === $action ) {
+			try {
 				$link = $this->links_repo->find( $id );
-				if ( null !== $link ) {
-					SchedulerBootstrap::enqueue_check_batch( array( $id ) );
-					++$results['success'];
-				} else {
-					++$results['failed'];
+				if ( null === $link ) {
+					throw new \RuntimeException( __( 'Link not found.', 'muri-link-tracker' ) );
 				}
-			} elseif ( 'delete' === $action ) {
-				$link = $this->links_repo->find( $id );
-				if ( null !== $link ) {
-					$this->perform_link_deletion( $link );
-					++$results['success'];
+				if ( 'recheck' === $action ) {
+					if ( 0 === SchedulerBootstrap::enqueue_check_batch( array( $id ) ) ) {
+						throw new \RuntimeException( __( 'Could not schedule the link check. Try again.', 'muri-link-tracker' ) );
+					}
 				} else {
-					++$results['failed'];
+					$result               = $this->perform_link_deletion( $link );
+					$results['revisions'] = array_merge( $results['revisions'], $result['revisions'] );
 				}
+				++$results['success'];
+			} catch ( \RuntimeException $error ) {
+				++$results['failed'];
+				$results['failures'][] = array(
+					'id'      => $id,
+					'code'    => 'mltr_action_failed',
+					'message' => $error->getMessage(),
+				);
 			}
 		}
-
-		$results['action'] = $action;
-
 		return new \WP_REST_Response( $results, 200 );
 	}
 
@@ -446,19 +424,9 @@ class LinksController extends \WP_REST_Controller {
 			);
 		}
 
-		// Reset status to pending before enqueuing.
-		$this->links_repo->update_check_result(
-			$id,
-			0,
-			LinkStatus::Pending,
-			null,
-			0,
-			0,
-			null,
-			null
-		);
-
-		SchedulerBootstrap::enqueue_check_batch( array( $id ) );
+		if ( 0 === SchedulerBootstrap::enqueue_check_batch( array( $id ) ) ) {
+			return new \WP_Error( 'mltr_schedule_failed', __( 'Could not schedule the link check. Try again.', 'muri-link-tracker' ), array( 'status' => 503 ) );
+		}
 
 		return new \WP_REST_Response(
 			array(
@@ -503,7 +471,11 @@ class LinksController extends \WP_REST_Controller {
 	 * @param \WP_REST_Request $request Full request object.
 	 * @return \WP_REST_Response
 	 */
-	public function export_csv( \WP_REST_Request $request ): \WP_REST_Response {
+	public function export_csv( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
+		// JSON field projection and envelopes cannot represent a binary stream.
+		if ( null !== $request->get_param( '_fields' ) || null !== $request->get_param( '_envelope' ) ) {
+			return new \WP_Error( 'mltr_export_format', __( 'CSV exports do not support JSON field projection or envelopes.', 'muri-link-tracker' ), array( 'status' => 400 ) );
+		}
 		$args = array(
 			'status'            => $request->get_param( 'status' ),
 			'link_type'         => $request->get_param( 'link_type' ),
@@ -518,13 +490,23 @@ class LinksController extends \WP_REST_Controller {
 			'per_page'          => 100,
 		);
 
-		$args     = array_filter( $args, fn( $v ) => null !== $v );
-		$csv_data = $this->csv_exporter->export( $this->query_builder, $this->instances_repo, $args );
+		$args = array_filter( $args, fn( $v ) => null !== $v );
+		try {
+			$stream = $this->csv_exporter->export( $this->query_builder, $this->instances_repo, $args );
+		} catch ( \RuntimeException $error ) {
+			return new \WP_Error( 'mltr_export_failed', $error->getMessage(), array( 'status' => 500 ) );
+		}
 
-		$response = new \WP_REST_Response( $csv_data, 200 );
-		$response->header( 'X-MLTR-Export', 'csv' );
-
-		return $response;
+		return new \WP_REST_Response(
+			$stream,
+			200,
+			array(
+				'X-MLTR-Export'          => 'csv',
+				'Content-Type'           => 'text/csv; charset=utf-8',
+				'Content-Disposition'    => 'attachment; filename="links-export-' . gmdate( 'Y-m-d' ) . '.csv"',
+				'X-Content-Type-Options' => 'nosniff',
+			)
+		);
 	}
 
 	/**
@@ -655,23 +637,37 @@ class LinksController extends \WP_REST_Controller {
 	 * @return array<string, mixed>
 	 */
 	private function prepare_instance_for_response( LinkInstance $instance ): array {
-		$post_title = get_the_title( $instance->post_id );
+		$post_title  = get_the_title( $instance->post_id );
+		$post        = get_post( $instance->post_id );
+		$supported   = in_array( $instance->source_type, array( 'post_content', 'post_excerpt' ), true );
+		$allowed     = current_user_can( 'edit_post', $instance->post_id );
+		$recoverable = $post instanceof \WP_Post && wp_revisions_enabled( $post );
+		$reason      = null;
+		if ( ! $supported ) {
+			$reason = __( 'Edit this source in WordPress and rescan before applying a global change.', 'muri-link-tracker' );
+		} elseif ( ! $allowed ) {
+			$reason = __( 'You do not have permission to edit this post.', 'muri-link-tracker' );
+		} elseif ( ! $recoverable ) {
+			$reason = __( 'Enable WordPress revisions for this post type to make global edits recoverable.', 'muri-link-tracker' );
+		}
 
 		return array(
-			'id'           => $instance->id,
-			'linkId'       => $instance->link_id,
-			'postId'       => $instance->post_id,
-			'postTitle'    => $post_title,
-			'postEditUrl'  => get_edit_post_link( $instance->post_id, 'raw' ),
-			'sourceType'   => $instance->source_type,
-			'anchorText'   => $instance->anchor_text,
-			'relNofollow'  => $instance->rel_nofollow,
-			'relSponsored' => $instance->rel_sponsored,
-			'relUgc'       => $instance->rel_ugc,
-			'isDofollow'   => $instance->is_dofollow,
-			'linkPosition' => $instance->link_position,
-			'blockName'    => $instance->block_name,
-			'createdAt'    => $instance->created_at->format( 'c' ),
+			'id'             => $instance->id,
+			'linkId'         => $instance->link_id,
+			'postId'         => $instance->post_id,
+			'postTitle'      => $post_title,
+			'postEditUrl'    => get_edit_post_link( $instance->post_id, 'raw' ),
+			'sourceType'     => $instance->source_type,
+			'editable'       => $supported && $allowed && $recoverable,
+			'readOnlyReason' => $reason,
+			'anchorText'     => $instance->anchor_text,
+			'relNofollow'    => $instance->rel_nofollow,
+			'relSponsored'   => $instance->rel_sponsored,
+			'relUgc'         => $instance->rel_ugc,
+			'isDofollow'     => $instance->is_dofollow,
+			'linkPosition'   => $instance->link_position,
+			'blockName'      => $instance->block_name,
+			'createdAt'      => $instance->created_at->format( 'c' ),
 		);
 	}
 
@@ -683,26 +679,41 @@ class LinksController extends \WP_REST_Controller {
 	 * @since 1.0.0
 	 *
 	 * @param \MuriLinkTracker\Models\Link $link Link DTO.
-	 * @return void
+	 * @return array{link:Link|null,updated_posts:int,revisions:array}
 	 */
-	private function perform_link_deletion( \MuriLinkTracker\Models\Link $link ): void {
-		// Remove link from post content (replace <a> with its text content).
-		$instances = $this->instances_repo->find_by_link( $link->id );
+	private function perform_link_deletion( Link $link ): array {
+		return $this->editing_service()->edit( $link, null, null, true );
+	}
 
-		foreach ( $instances as $instance ) {
-			$post = \get_post( $instance->post_id );
-			if ( null === $post ) {
-				continue;
-			}
+	/** Build the transactional link editing service. */
+	private function editing_service(): LinkEditingService {
+		global $wpdb;
+		return new LinkEditingService( $wpdb, $this->links_repo, $this->instances_repo, $this->html_editor );
+	}
 
-			$updated_content = $this->html_editor->unlink_in_html( $post->post_content, $link->url );
+	/**
+	 * Convert a content editing failure into a REST error.
+	 *
+	 * @param \RuntimeException $error Content editing exception.
+	 */
+	private function edit_error( \RuntimeException $error ): \WP_Error {
+		return new \WP_Error( 'mltr_edit_conflict', $error->getMessage(), array( 'status' => 403 === $error->getCode() ? 403 : 409 ) );
+	}
 
-			if ( $updated_content !== $post->post_content ) {
-				$this->html_editor->update_post_content_silently( $post->ID, $updated_content );
-			}
+	/**
+	 * Keep browser-active and unsupported URL schemes out of edited content.
+	 *
+	 * @param string $url Requested link URL.
+	 */
+	private static function is_editable_url( string $url ): bool {
+		if ( '' === $url || preg_match( '/[\x00-\x20\x7f]/', $url ) || str_contains( $url, '\\' ) ) {
+			return false;
 		}
-
-		$this->links_repo->delete( $link->id );
+		if ( str_starts_with( $url, '/' ) && ! str_starts_with( $url, '//' ) ) {
+			return true;
+		}
+		$parsed = wp_parse_url( $url );
+		return is_array( $parsed ) && ! empty( $parsed['host'] ) && in_array( strtolower( $parsed['scheme'] ?? '' ), array( 'http', 'https' ), true ) && ! isset( $parsed['user'] ) && ! isset( $parsed['pass'] );
 	}
 
 	/**
@@ -749,6 +760,7 @@ class LinksController extends \WP_REST_Controller {
 				'type'              => 'array',
 				'required'          => true,
 				'items'             => array( 'type' => 'integer' ),
+				'minItems'          => 1,
 				'maxItems'          => 100,
 				'sanitize_callback' => static function ( array $ids ): array {
 					return array_map( 'absint', $ids );

@@ -74,6 +74,139 @@ class QueryBuilder {
 	 * @return array{items: Link[], total: int}
 	 */
 	public function query( array $args = array() ): array {
+		$wpdb = $this->wpdb;
+		[ $join_sql, $where_sql, $where_params, $select, $needs_join ] = $this->filter_parts( $args );
+
+		// --- Count total ---
+
+		$count_select = $needs_join ? 'COUNT(DISTINCT l.id)' : 'COUNT(*)';
+		$count_sql    = "SELECT $count_select FROM %i l" . $join_sql . $where_sql;
+
+		if ( ! empty( $where_params ) ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Query is built with prepare() and whitelisted column names only.
+			$total = (int) $this->wpdb->get_var(
+				// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+				$wpdb->prepare( $count_sql, $this->links_table, ...$where_params )
+			);
+		} else {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Query is built with prepare() and whitelisted column names only.
+			$total = (int) $this->wpdb->get_var(
+				// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+				$wpdb->prepare( $count_sql, $this->links_table )
+			);
+		}
+
+		if ( 0 === $total ) {
+			return array(
+				'items' => array(),
+				'total' => 0,
+			);
+		}
+
+		// --- Ordering ---
+
+		$orderby_column = $this->sanitize_orderby( $args['orderby'] ?? '' );
+		$order          = $this->sanitize_order( $args['order'] ?? '' );
+
+		// --- Pagination ---
+
+		$per_page = min( max( (int) ( $args['per_page'] ?? 25 ), 1 ), 100 );
+		$page     = max( (int) ( $args['page'] ?? 1 ), 1 );
+		$offset   = ( $page - 1 ) * $per_page;
+
+		// --- Main query ---
+
+		$query_sql = "SELECT $select FROM %i l" . $join_sql . $where_sql
+			. " ORDER BY l.$orderby_column $order, l.id $order LIMIT %d OFFSET %d";
+
+		$all_params = array( $this->links_table, ...$where_params, $per_page, $offset );
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Query is built with prepare() and whitelisted column names only.
+		$rows = $this->wpdb->get_results(
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+			$wpdb->prepare( $query_sql, ...$all_params )
+		);
+
+		$items = array_map( array( Link::class, 'from_db_row' ), $rows );
+
+		return array(
+			'items' => $items,
+			'total' => $total,
+		);
+	}
+
+	/**
+	 * Iterates every matching link in bounded batches, using a stable ID cursor.
+	 *
+	 * Export deliberately orders by ID rather than mutable display columns.
+	 * The initial upper bound excludes later insertions; deleting an earlier
+	 * row cannot shift an OFFSET and skip another link. Filters are identical
+	 * to the table query, with no repeated COUNT or growing OFFSET.
+	 *
+	 * @param array<string,mixed> $args Filter arguments; pagination and sort are ignored.
+	 * @param int                 $batch_size Maximum links held in each batch (1–500).
+	 * @return \Generator<int, array<Link>>
+	 * @throws \RuntimeException When a database query fails.
+	 */
+	public function export_batches( array $args = array(), int $batch_size = 100 ): \Generator {
+
+		$wpdb = $this->wpdb;
+		[ $join_sql, $where_sql, $where_params, $select ] = $this->filter_parts( $args );
+		$batch_size                                       = min( max( $batch_size, 1 ), 500 );
+		$maximum_id                                       = (int) $this->wpdb->get_var(
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Table identifier is prepared with %i.
+			$wpdb->prepare( 'SELECT MAX(id) FROM %i', $this->links_table )
+		);
+		if ( '' !== $this->wpdb->last_error ) {
+			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Serialized as a REST error, not rendered as HTML.
+			throw new \RuntimeException( __( 'Unable to read links for export. Please try again.', 'muri-link-tracker' ) );
+		}
+		$cursor     = 0;
+		$where_sql .= ( '' === $where_sql ? ' WHERE ' : ' AND ' ) . 'l.id > %d AND l.id <= %d';
+		$sql        = "SELECT $select FROM %i l" . $join_sql . $where_sql . ' ORDER BY l.id ASC LIMIT %d';
+		while ( $cursor < $maximum_id ) {
+			$rows = $this->export_rows(
+				// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Shared filters contain only placeholders and fixed SQL fragments.
+				$wpdb->prepare( $sql, $this->links_table, ...array_merge( $where_params, array( $cursor, $maximum_id, $batch_size ) ) )
+			);
+			if ( empty( $rows ) ) {
+				break;
+			}
+			$items  = array_map( array( Link::class, 'from_db_row' ), $rows );
+			$cursor = $items[ count( $items ) - 1 ]->id;
+			yield $items;
+			if ( count( $items ) < $batch_size ) {
+				break;
+			}
+		}
+	}
+
+	/**
+	 * Runs one export batch and checks the error from that database operation.
+	 *
+	 * @param string $sql Fully prepared SQL.
+	 * @return array<object> Database rows.
+	 * @throws \RuntimeException When the database query fails.
+	 */
+	private function export_rows( string $sql ): array {
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Only called with fully prepared SQL from export_batches().
+		$rows = $this->wpdb->get_results( $sql );
+		if ( '' !== $this->wpdb->last_error ) {
+			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Serialized as a REST error, not rendered as HTML.
+			throw new \RuntimeException( __( 'Unable to read links for export. Please try again.', 'muri-link-tracker' ) );
+		}
+		return $rows;
+	}
+
+	/**
+	 * Builds the shared, parameterized filters for display and export queries.
+	 *
+	 * @param array<string,mixed> $args Query filters.
+	 * @return array{string, string, array, string, bool}
+	 */
+	private function filter_parts( array $args ): array {
+
+		$wpdb          = $this->wpdb;
 		$where_clauses = array();
 		$where_params  = array();
 		$needs_join    = false;
@@ -142,67 +275,12 @@ class QueryBuilder {
 		// --- Build SQL fragments ---
 
 		$join_sql  = $needs_join
-			? $this->wpdb->prepare( ' INNER JOIN %i i ON l.id = i.link_id', $this->instances_table )
+			? $wpdb->prepare( ' INNER JOIN %i i ON l.id = i.link_id', $this->instances_table )
 			: '';
 		$where_sql = ! empty( $where_clauses ) ? ' WHERE ' . implode( ' AND ', $where_clauses ) : '';
 		$select    = $needs_join ? 'DISTINCT l.*' : 'l.*';
 
-		// --- Count total ---
-
-		$count_select = $needs_join ? 'COUNT(DISTINCT l.id)' : 'COUNT(*)';
-		$count_sql    = "SELECT $count_select FROM %i l" . $join_sql . $where_sql;
-
-		if ( ! empty( $where_params ) ) {
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Query is built with prepare() and whitelisted column names only.
-			$total = (int) $this->wpdb->get_var(
-				// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-				$this->wpdb->prepare( $count_sql, $this->links_table, ...$where_params )
-			);
-		} else {
-			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Query is built with prepare() and whitelisted column names only.
-			$total = (int) $this->wpdb->get_var(
-				// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-				$this->wpdb->prepare( $count_sql, $this->links_table )
-			);
-		}
-
-		if ( 0 === $total ) {
-			return array(
-				'items' => array(),
-				'total' => 0,
-			);
-		}
-
-		// --- Ordering ---
-
-		$orderby_column = $this->sanitize_orderby( $args['orderby'] ?? '' );
-		$order          = $this->sanitize_order( $args['order'] ?? '' );
-
-		// --- Pagination ---
-
-		$per_page = min( max( (int) ( $args['per_page'] ?? 25 ), 1 ), 100 );
-		$page     = max( (int) ( $args['page'] ?? 1 ), 1 );
-		$offset   = ( $page - 1 ) * $per_page;
-
-		// --- Main query ---
-
-		$query_sql = "SELECT $select FROM %i l" . $join_sql . $where_sql
-			. " ORDER BY l.$orderby_column $order LIMIT %d OFFSET %d";
-
-		$all_params = array( $this->links_table, ...$where_params, $per_page, $offset );
-
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Query is built with prepare() and whitelisted column names only.
-		$rows = $this->wpdb->get_results(
-			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-			$this->wpdb->prepare( $query_sql, ...$all_params )
-		);
-
-		$items = array_map( array( Link::class, 'from_db_row' ), $rows );
-
-		return array(
-			'items' => $items,
-			'total' => $total,
-		);
+		return array( $join_sql, $where_sql, $where_params, $select, $needs_join );
 	}
 
 	/**

@@ -233,6 +233,59 @@ class QueryBuilderTest extends TestCase {
 		$this->assertStringNotContainsString( 'DISTINCT', $this->wpdb->last_query );
 	}
 
+	public function test_tied_sort_values_have_a_stable_id_order_on_every_page(): void {
+		$this->wpdb->var_result = 100;
+		$this->wpdb->results_result = [ $this->make_link_row( 1 ) ];
+		$this->builder->query( [ 'orderby' => 'http_status', 'order' => 'asc', 'page' => 2 ] );
+		$this->assertStringContainsString( 'ORDER BY l.http_status ASC, l.id ASC LIMIT 25 OFFSET 25', $this->wpdb->last_query );
+		$this->builder->query( [ 'orderby' => 'last_checked', 'order' => 'desc' ] );
+		$this->assertStringContainsString( 'ORDER BY l.last_checked DESC, l.id DESC', $this->wpdb->last_query );
+	}
+
+	public function test_export_uses_bounded_cursor_batches_without_counts_or_offsets(): void {
+		$this->wpdb->var_result = 6;
+		$this->wpdb->results_queue = [
+			[ $this->make_link_row( 1 ), $this->make_link_row( 3 ) ],
+			[ $this->make_link_row( 5 ) ],
+		];
+		$batches = iterator_to_array( $this->builder->export_batches( [ 'page' => 99, 'per_page' => 1 ], 2 ) );
+		$this->assertSame( [ 1, 3, 5 ], array_map( fn( $link ) => $link->id, array_merge( ...$batches ) ) );
+		$sql = implode( "\n", $this->wpdb->prepare_log );
+		$this->assertStringNotContainsString( 'COUNT(', $sql );
+		$this->assertStringNotContainsString( 'OFFSET', $sql );
+		$this->assertStringContainsString( 'MAX(id)', $sql );
+		$this->assertStringContainsString( 'l.id > 0 AND l.id <= 6 ORDER BY l.id ASC LIMIT 2', $sql );
+		$this->assertStringContainsString( 'l.id > 3 AND l.id <= 6 ORDER BY l.id ASC LIMIT 2', $sql );
+		$this->assertCount( 3, $this->wpdb->prepare_log );
+	}
+
+	public function test_export_preserves_all_filters_and_distinct_instance_matches(): void {
+		$this->wpdb->var_result = 4;
+		$this->wpdb->results_result = [ $this->make_link_row( 4 ) ];
+		iterator_to_array( $this->builder->export_batches( [
+			'status' => 'broken', 'link_type' => 'external', 'is_affiliate' => false,
+			'affiliate_network' => 'network', 'rel' => 'sponsored', 'search' => '50% sale', 'post_id' => 42,
+		] ) );
+		$sql = $this->wpdb->last_query;
+		foreach ( [ 'DISTINCT l.*', 'INNER JOIN', "l.status_category = 'broken'", 'l.is_external = 1', 'l.is_affiliate = 0', "l.affiliate_network = 'network'", 'i.rel_sponsored = 1', 'i.post_id = 42', '(l.url LIKE', 'OR i.anchor_text LIKE' ] as $filter ) {
+			$this->assertStringContainsString( $filter, $sql );
+		}
+	}
+
+	public function test_export_clamps_its_batch_and_stops_at_initial_upper_bound(): void {
+		$this->wpdb->var_result = 2;
+		$this->wpdb->results_result = [ $this->make_link_row( 2 ) ];
+		$this->assertCount( 1, iterator_to_array( $this->builder->export_batches( [], 999999 ) ) );
+		$this->assertStringContainsString( 'LIMIT 500', $this->wpdb->last_query );
+		$this->assertStringContainsString( 'l.id <= 2', $this->wpdb->last_query );
+	}
+
+	public function test_export_reports_database_failures_instead_of_an_empty_success(): void {
+		$this->wpdb->last_error = 'Connection unavailable';
+		$this->expectException( \RuntimeException::class );
+		iterator_to_array( $this->builder->export_batches() );
+	}
+
 	/**
 	 * Creates a mock database row object for a link.
 	 *
@@ -277,6 +330,9 @@ class WpdbStub extends \wpdb {
 
 	/** @var array Return value for get_results(). */
 	public array $results_result = [];
+
+	/** @var array Sequential result batches for cursor tests. */
+	public array $results_queue = [];
 
 	/** @var string Last SQL query prepared. */
 	public string $last_query = '';
@@ -333,7 +389,7 @@ class WpdbStub extends \wpdb {
 		if ( $query ) {
 			$this->last_query = (string) $query;
 		}
-		return $this->results_result;
+		return $this->results_queue ? array_shift( $this->results_queue ) : $this->results_result;
 	}
 
 	/**

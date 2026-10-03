@@ -12,5 +12,3 @@ parameters:
         - muri-link-tracker.php
     scanDirectories:
         - vendor/woocommerce/action-scheduler/
-    ignoreErrors:
-        - '#Constant (MLTR_PLUGIN_DIR|MLTR_PLUGIN_URL|WP_MEMORY_LIMIT) not found#'

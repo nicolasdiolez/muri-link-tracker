@@ -24,6 +24,10 @@ require_once __DIR__ . '/vendor/autoload.php';
  */
 delete_option( 'mltr_db_version' );
 delete_option( 'mltr_settings' );
+delete_option( 'mltr_active_scan_id' );
+delete_option( 'mltr_queue_generation' );
+delete_option( 'mltr_first_scan_date' );
+delete_option( 'mltr_review_notice_dismissed' );
 
 /*
  * Unschedule all Action Scheduler actions.

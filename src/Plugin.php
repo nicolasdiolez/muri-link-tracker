@@ -16,11 +16,13 @@ use MuriLinkTracker\Admin\AdminPage;
 use MuriLinkTracker\Admin\ReviewNotice;
 use MuriLinkTracker\Database\InstancesRepository;
 use MuriLinkTracker\Database\LinksRepository;
+use MuriLinkTracker\Database\Migrator;
 use MuriLinkTracker\Database\QueryBuilder;
 use MuriLinkTracker\Queue\BatchOrchestrator;
 use MuriLinkTracker\Queue\CheckJob;
 use MuriLinkTracker\Queue\ScanJob;
 use MuriLinkTracker\Queue\SchedulerBootstrap;
+use MuriLinkTracker\Queue\ScanStore;
 use MuriLinkTracker\REST\CsvExporter;
 use MuriLinkTracker\REST\LinksController;
 use MuriLinkTracker\REST\ScanController;
@@ -91,6 +93,20 @@ class Plugin {
 	 * @since 1.0.0
 	 */
 	public function register(): void {
+		try {
+			( new Migrator() )->maybe_migrate();
+		} catch ( \RuntimeException $error ) {
+			// A failed plugin migration must not take the public site offline.
+			add_action(
+				'admin_notices',
+				static function () use ( $error ): void {
+					if ( current_user_can( 'manage_options' ) ) {
+						echo '<div class="notice notice-error"><p>' . esc_html( $error->getMessage() ) . '</p></div>';
+					}
+				}
+			);
+			return;
+		}
 		// Queue system must register on ALL requests (not just admin)
 		// because Action Scheduler processes actions via WP-Cron/frontend.
 		$this->register_queue();
@@ -185,35 +201,28 @@ class Plugin {
 		$extractor      = new LinkExtractor( $content_parser, $block_parser, $classifier );
 
 		// HTTP checker.
-		$settings          = \get_option( 'mltr_settings', array() );
-		$timeout           = (int) ( $settings['check_timeout'] ?? 15 );
-		$http_checker      = new HttpChecker( $timeout );
-		$internal_checker  = new InternalLinkChecker();
+		$settings         = \get_option( 'mltr_settings', array() );
+		$timeout          = (int) ( $settings['check_timeout'] ?? 15 );
+		$http_checker     = new HttpChecker( $timeout );
+		$internal_checker = new InternalLinkChecker( http_checker: new HttpChecker( 5 ) );
+		global $wpdb;
+		$store = new ScanStore( $wpdb );
 
 		// Jobs.
-		$scan_job  = new ScanJob( $extractor, $links_repo, $instances_repo );
-		$check_job = new CheckJob( $http_checker, $internal_checker, $links_repo );
+		$scan_job  = new ScanJob( $extractor, $links_repo, $instances_repo, $store );
+		$check_job = new CheckJob( $http_checker, $internal_checker, $links_repo, $store );
 
 		// Hook jobs to Action Scheduler actions.
 		\add_action( SchedulerBootstrap::SCAN_BATCH_HOOK, array( $scan_job, 'process_batch' ) );
 		\add_action( SchedulerBootstrap::CHECK_BATCH_HOOK, array( $check_job, 'process_batch' ) );
 
 		// Orchestrator for daily recheck and batch tracking.
-		$orchestrator = new BatchOrchestrator( $links_repo, $instances_repo );
+		$orchestrator = new BatchOrchestrator( $links_repo, $instances_repo, $store );
 		\add_action( SchedulerBootstrap::RECHECK_DAILY_HOOK, array( $orchestrator, 'recheck_stale_links' ) );
-
-		// Batch tracking hooks.
-		\add_action( 'mltr/scan/batch_complete', array( $orchestrator, 'remove_scan_batch' ) );
-		\add_action( 'mltr/check/batch_complete', array( $orchestrator, 'remove_check_batch' ) );
-		\add_action( 'mltr/check/batch_split', array( $orchestrator, 'handle_check_batch_split' ), 10, 2 );
-
-		// Orphan cleanup.
-		\add_action(
-			SchedulerBootstrap::CLEANUP_HOOK,
-			static function () use ( $links_repo ): void {
-				$links_repo->cleanup_orphans();
-			}
-		);
+		\add_action( SchedulerBootstrap::COORDINATOR_HOOK, array( $orchestrator, 'advance' ) );
+		\add_action( SchedulerBootstrap::WATCHDOG_HOOK, array( $orchestrator, 'watchdog' ) );
+		\add_action( SchedulerBootstrap::CLEANUP_HOOK, array( $orchestrator, 'cleanup' ) );
+		\add_action( 'action_scheduler_init', array( SchedulerBootstrap::class, 'ensure_recurring_actions' ) );
+		\add_action( 'action_scheduler_ensure_recurring_actions', array( SchedulerBootstrap::class, 'ensure_recurring_actions' ) );
 	}
-
 }

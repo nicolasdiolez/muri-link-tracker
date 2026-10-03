@@ -1,9 +1,8 @@
 <?php
 /**
- * Action Scheduler bootstrap and helpers.
+ * Action Scheduler integration; all execution stays outside status requests.
  *
  * @package MuriLinkTracker
- * @since   1.0.0
  */
 
 declare( strict_types=1 );
@@ -12,274 +11,172 @@ namespace MuriLinkTracker\Queue;
 
 defined( 'ABSPATH' ) || exit;
 
-/**
- * Registers Action Scheduler hooks and provides helpers
- * for enqueueing and managing background actions.
- *
- * @since 1.0.0
- */
+/** Schedules durable jobs and recurring maintenance. */
 class SchedulerBootstrap {
-
-	/**
-	 * Action Scheduler group name for all plugin actions.
-	 *
-	 * @since 1.0.0
-	 * @var string
-	 */
-	public const GROUP = 'muri-link-tracker';
-
-	/**
-	 * Action hook for processing a batch of posts (link extraction).
-	 *
-	 * @since 1.0.0
-	 * @var string
-	 */
-	public const SCAN_BATCH_HOOK = 'mltr/scan/process_batch';
-
-	/**
-	 * Action hook for processing a batch of links (HTTP checks).
-	 *
-	 * @since 1.0.0
-	 * @var string
-	 */
-	public const CHECK_BATCH_HOOK = 'mltr/check/process_batch';
-
-	/**
-	 * Action hook for the daily recheck of stale links.
-	 *
-	 * @since 1.0.0
-	 * @var string
-	 */
+	public const GROUP              = 'muri-link-tracker';
+	public const SCAN_BATCH_HOOK    = 'mltr/scan/process_batch';
+	public const CHECK_BATCH_HOOK   = 'mltr/check/process_batch';
+	public const COORDINATOR_HOOK   = 'mltr/scan/advance';
+	public const WATCHDOG_HOOK      = 'mltr/scan/watchdog';
 	public const RECHECK_DAILY_HOOK = 'mltr/recheck/daily';
+	public const CLEANUP_HOOK       = 'mltr/maintenance/cleanup';
 
-	/**
-	 * Action hook for periodic maintenance (orphan cleanup).
-	 *
-	 * @since 1.0.0
-	 * @var string
-	 */
-	public const CLEANUP_HOOK = 'mltr/maintenance/cleanup';
-
-	/**
-	 * Checks if Action Scheduler is available.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @return bool
-	 */
+	/** Check whether Action Scheduler is ready. */
 	public static function is_available(): bool {
 		return function_exists( 'as_enqueue_async_action' );
 	}
 
 	/**
-	 * Enqueues an async scan batch action.
+	 * Avoid duplicate pending deliveries; running deliveries may enqueue their continuation.
 	 *
-	 * @since 1.0.0
-	 *
-	 * @param string $batch_id Batch identifier (references a transient with post IDs).
+	 * @param string $hook Action Scheduler hook name.
+	 * @param array  $args Arguments passed to the scheduled action.
+	 * @param int    $delay Delay before dispatch, in seconds.
 	 */
-	public static function enqueue_scan_batch( string $batch_id ): int {
+	private static function enqueue( string $hook, array $args, int $delay = 0 ): int {
 		if ( ! self::is_available() ) {
-			if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-				error_log( '[MuriLinkTracker] enqueue_scan_batch: Action Scheduler not available.' );
-			}
 			return 0;
 		}
-
-		$action_id = as_enqueue_async_action(
-			self::SCAN_BATCH_HOOK,
-			array( $batch_id ),
-			self::GROUP
-		);
-
-		if ( 0 === $action_id ) {
-			if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-				error_log( "[MuriLinkTracker] enqueue_scan_batch: as_enqueue_async_action returned 0 for batch {$batch_id}." );
-			}
-		}
-
-		return $action_id;
-	}
-
-	/**
-	 * Enqueues an async check batch action.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param int[] $link_ids Array of link IDs to check.
-	 */
-	public static function enqueue_check_batch( array $link_ids ): int {
-		if ( ! self::is_available() ) {
-			if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-				error_log( '[MuriLinkTracker] enqueue_check_batch: Action Scheduler not available.' );
-			}
-			return 0;
-		}
-
-		$action_id = as_enqueue_async_action(
-			self::CHECK_BATCH_HOOK,
-			array( $link_ids ),
-			self::GROUP
-		);
-
-		if ( 0 === $action_id ) {
-			if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-				error_log( '[MuriLinkTracker] enqueue_check_batch: as_enqueue_async_action returned 0.' );
-			}
-		}
-
-		return $action_id;
-	}
-
-	/**
-	 * Schedules the daily recheck recurring action if not already scheduled.
-	 *
-	 * @since 1.0.0
-	 */
-	public static function schedule_daily_recheck(): void {
-		if ( ! self::is_available() ) {
-			return;
-		}
-
-		if ( false === as_next_scheduled_action( self::RECHECK_DAILY_HOOK, array(), self::GROUP ) ) {
-			as_schedule_recurring_action(
-				time(),
-				DAY_IN_SECONDS,
-				self::RECHECK_DAILY_HOOK,
-				array(),
-				self::GROUP
-			);
-		}
-	}
-
-	/**
-	 * Cancels all pending actions for this plugin.
-	 *
-	 * @since 1.0.0
-	 */
-	public static function cancel_all(): void {
-		if ( ! self::is_available() ) {
-			return;
-		}
-
-		as_unschedule_all_actions( '', array(), self::GROUP );
-	}
-
-	/**
-	 * Returns the number of pending actions for this plugin.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @return int
-	 */
-	/**
-	 * Returns diagnostic information about Action Scheduler health.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @return array<string, mixed>
-	 */
-	public static function get_diagnostics(): array {
-		global $wpdb;
-
-		$as_available   = self::is_available();
-		$as_initialized = class_exists( 'ActionScheduler', false ) && \ActionScheduler::is_initialized();
-
-		$as_version = null;
-		if ( class_exists( 'ActionScheduler_Versions', false ) ) {
-			$as_version = \ActionScheduler_Versions::instance()->latest_version();
-		}
-
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- One-time diagnostic check, caching not applicable.
-		$tables_exist = (bool) $wpdb->get_var(
-			$wpdb->prepare(
-				'SHOW TABLES LIKE %s',
-				$wpdb->prefix . 'actionscheduler_actions'
-			)
-		);
-
-		$pending_count = 0;
-		$failed_count  = 0;
-		if ( $as_available && $as_initialized ) {
-			$pending_count = self::get_pending_count();
-
-			$failed_actions = as_get_scheduled_actions(
-				array(
-					'group'    => self::GROUP,
-					'status'   => \ActionScheduler_Store::STATUS_FAILED,
-					'per_page' => 0,
-				),
-				'ids'
-			);
-			$failed_count   = count( $failed_actions );
-		}
-
-		return array(
-			'as_available'      => $as_available,
-			'as_initialized'    => $as_initialized,
-			'as_version'        => $as_version,
-			'tables_exist'      => $tables_exist,
-			'pending_count'     => $pending_count,
-			'failed_count'      => $failed_count,
-			'wp_cron_enabled'   => ! ( defined( 'DISABLE_WP_CRON' ) && DISABLE_WP_CRON ),
-			'as_cron_scheduled' => (bool) wp_next_scheduled( 'action_scheduler_run_queue' ),
-		);
-	}
-
-	/**
-	 * Manually triggers the Action Scheduler queue runner.
-	 *
-	 * Works around environments where WP-Cron loopback fails (e.g. LocalWP)
-	 * by processing pending actions synchronously during status polls.
-	 *
-	 * @since 1.0.0
-	 */
-	public static function maybe_run_queue(): void {
-		if ( ! self::is_available() ) {
-			return;
-		}
-
-		if ( 0 === self::get_pending_count() ) {
-			return;
-		}
-
-		if ( ! class_exists( 'ActionScheduler', false ) || ! \ActionScheduler::is_initialized() ) {
-			return;
-		}
-
-		// Prevent re-entrancy if already inside a queue run.
-		if ( doing_action( 'action_scheduler_run_queue' ) ) {
-			return;
-		}
-
-		\ActionScheduler_QueueRunner::instance()->run( 'MLTR Status Poll' );
-	}
-
-	/**
-	 * Returns the number of pending actions for this plugin.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @return int Number of pending actions.
-	 */
-	public static function get_pending_count(): int {
-		if ( ! self::is_available() || ! function_exists( 'as_get_scheduled_actions' ) ) {
-			return 0;
-		}
-
-		$actions = as_get_scheduled_actions(
+		$pending = as_get_scheduled_actions(
 			array(
+				'hook'     => $hook,
+				'args'     => $args,
 				'group'    => self::GROUP,
-				'status'   => \ActionScheduler_Store::STATUS_PENDING,
-				'per_page' => 0,
+				'status'   => 'pending',
+				'per_page' => 1,
 			),
 			'ids'
 		);
+		if ( $pending ) {
+			return (int) reset( $pending );
+		}
+		return $delay > 0
+			? (int) as_schedule_single_action( time() + $delay, $hook, $args, self::GROUP )
+			: (int) as_enqueue_async_action( $hook, $args, self::GROUP );
+	}
 
-		return count( $actions );
+	/**
+	 * Schedule a durable extraction or HTTP job.
+	 *
+	 * @param int    $id Record identifier.
+	 * @param string $phase Extraction or HTTP checking phase.
+	 * @param int    $delay Delay before dispatch, in seconds.
+	 */
+	public static function enqueue_job( int $id, string $phase, int $delay = 0 ): int {
+		return self::enqueue( 'scanning' === $phase ? self::SCAN_BATCH_HOOK : self::CHECK_BATCH_HOOK, array( $id ), $delay );
+	}
+
+	/**
+	 * Schedule the next planning step for a scan.
+	 *
+	 * @param string $scan_id Persisted scan identifier.
+	 * @param int    $delay Delay before dispatch, in seconds.
+	 */
+	public static function enqueue_coordinator( string $scan_id, int $delay = 0 ): int {
+		return self::enqueue( self::COORDINATOR_HOOK, array( $scan_id ), $delay );
+	}
+
+	/**
+	 * Backward-compatible entrypoint used by the REST recheck actions.
+	 *
+	 * @param array $link_ids Identifiers of links to recheck.
+	 */
+	public static function enqueue_check_batch( array $link_ids ): int {
+		global $wpdb;
+		$generation = ( new ScanStore( $wpdb ) )->manual_generation();
+		$last       = 0;
+		foreach ( array_unique( array_map( 'absint', $link_ids ) ) as $id ) {
+			if ( $id > 0 ) {
+				$action = self::enqueue(
+					self::CHECK_BATCH_HOOK,
+					array(
+						array(
+							'manual_id'  => $id,
+							'generation' => $generation,
+							'attempt'    => 0,
+						),
+					)
+				);
+				if ( 0 === $action ) {
+					return 0;
+				}
+				$last = $action;
+			}
+		}
+		return $last;
+	}
+
+	/**
+	 * Schedule another bounded attempt for a manual check.
+	 *
+	 * @param array $payload Manual check payload and cancellation token.
+	 */
+	public static function retry_manual( array $payload ): void {
+		$payload['attempt'] = (int) ( $payload['attempt'] ?? 0 ) + 1;
+		if ( $payload['attempt'] < ScanStore::MAX_ATTEMPTS ) {
+			self::enqueue( self::CHECK_BATCH_HOOK, array( $payload ), 30 * $payload['attempt'] );
+		}
+	}
+
+	/** Ensure the daily recheck action is scheduled. */
+	public static function schedule_daily_recheck(): void {
+		self::ensure_recurring_actions();
+	}
+
+	/** Register missing recheck and maintenance actions. */
+	public static function ensure_recurring_actions(): void {
+		if ( ! self::is_available() ) {
+			return;
+		}
+		foreach ( array(
+			self::WATCHDOG_HOOK      => 60,
+			self::RECHECK_DAILY_HOOK => DAY_IN_SECONDS,
+			self::CLEANUP_HOOK       => DAY_IN_SECONDS,
+		) as $hook => $interval ) {
+			if ( false === as_next_scheduled_action( $hook, array(), self::GROUP ) ) {
+				as_schedule_recurring_action( time() + $interval, $interval, $hook, array(), self::GROUP );
+			}
+		}
+	}
+
+	/** Reserved for plugin deactivation; scan cancellation never removes recurring actions. */
+	public static function cancel_all(): void {
+		if ( self::is_available() ) {
+			as_unschedule_all_actions( '', array(), self::GROUP );
+		}
+	}
+
+	/** Count pending deliveries in the plugin action group. */
+	public static function get_pending_count(): int {
+		if ( ! self::is_available() ) {
+			return 0;
+		}
+		$count = 0;
+		foreach ( array( self::SCAN_BATCH_HOOK, self::CHECK_BATCH_HOOK, self::COORDINATOR_HOOK ) as $hook ) {
+			$count += count(
+				as_get_scheduled_actions(
+					array(
+						'hook'     => $hook,
+						'group'    => self::GROUP,
+						'status'   => 'pending',
+						'per_page' => 0,
+					),
+					'ids'
+				)
+			);
+		}
+		return $count;
+	}
+
+	/** Report scheduler availability and recurring action health. */
+	public static function get_diagnostics(): array {
+		$initialized = class_exists( 'ActionScheduler', false ) && \ActionScheduler::is_initialized();
+		return array(
+			'as_available'      => self::is_available(),
+			'as_initialized'    => $initialized,
+			'pending_count'     => $initialized ? self::get_pending_count() : 0,
+			'wp_cron_enabled'   => ! ( defined( 'DISABLE_WP_CRON' ) && DISABLE_WP_CRON ),
+			'as_cron_scheduled' => (bool) wp_next_scheduled( 'action_scheduler_run_queue' ),
+		);
 	}
 }

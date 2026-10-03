@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-03-29T22:15:30+00:00\n"
+"POT-Creation-Date: 2026-10-02T14:40:44+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: muri-link-tracker\n"
@@ -18,8 +18,7 @@ msgstr ""
 #: muri-link-tracker.php
 #: src/Admin/AdminPage.php:39
 #: src/Admin/AdminPage.php:40
-#: admin/src/App.js:54
-#: build/index.js:155
+#: admin/src/App.js:78
 msgid "Muri Link Tracker"
 msgstr ""
 
@@ -47,144 +46,136 @@ msgstr ""
 msgid "Muri Link Tracker: Composer autoloader not found. Please run \"composer install\" in the plugin directory."
 msgstr ""
 
-#: src/Admin/ReviewNotice.php:99
+#: src/Admin/ReviewNotice.php:102
 msgid "How do you like Muri Link Tracker?"
 msgstr ""
 
-#: src/Admin/ReviewNotice.php:100
+#: src/Admin/ReviewNotice.php:103
 msgid "We hope the plugin is helping you maintain a healthy site! If you have a moment, could you please leave us a 5-star rating on WordPress.org? It helps us a lot!"
 msgstr ""
 
-#: src/Admin/ReviewNotice.php:104
-#: admin/src/components/Dashboard.js:240
-#: build/index.js:5
+#: src/Admin/ReviewNotice.php:107
+#: admin/src/components/Dashboard.js:271
 msgid "Leave a Review"
 msgstr ""
 
-#: src/Admin/ReviewNotice.php:107
+#: src/Admin/ReviewNotice.php:110
 msgid "Maybe later"
+msgstr ""
+
+#: src/Admin/ReviewNotice.php:125
+msgid "You cannot change this setting."
+msgstr ""
+
+#: src/Database/QueryBuilder.php:159
+#: src/Database/QueryBuilder.php:193
+msgid "Unable to read links for export. Please try again."
 msgstr ""
 
 #: src/Models/Enums/LinkStatus.php:57
 #: admin/src/components/FilterBar.js:16
 #: admin/src/utils/constants.js:14
-#: build/index.js:1
-#: build/index.js:155
 msgid "Pending"
 msgstr ""
 
 #: src/Models/Enums/LinkStatus.php:58
 #: admin/src/components/FilterBar.js:15
 #: admin/src/utils/constants.js:15
-#: build/index.js:1
-#: build/index.js:155
 msgid "OK"
 msgstr ""
 
 #: src/Models/Enums/LinkStatus.php:59
 #: admin/src/utils/constants.js:16
-#: build/index.js:1
 msgid "Redirect"
 msgstr ""
 
 #: src/Models/Enums/LinkStatus.php:60
-#: admin/src/components/Dashboard.js:45
+#: admin/src/components/Dashboard.js:93
 #: admin/src/components/FilterBar.js:13
 #: admin/src/utils/constants.js:17
-#: build/index.js:1
-#: build/index.js:5
-#: build/index.js:155
 msgid "Broken"
 msgstr ""
 
 #: src/Models/Enums/LinkStatus.php:61
 #: admin/src/utils/constants.js:18
-#: build/index.js:1
 msgid "Error"
 msgstr ""
 
 #: src/Models/Enums/LinkStatus.php:62
 #: admin/src/utils/constants.js:19
-#: build/index.js:1
 msgid "Timeout"
 msgstr ""
 
 #: src/Models/Enums/LinkStatus.php:63
 #: admin/src/utils/constants.js:20
-#: build/index.js:1
 msgid "Skipped"
 msgstr ""
 
-#: src/Queue/BatchOrchestrator.php:498
-msgid "Action Scheduler failed to enqueue scan batches. Check server error logs."
-msgstr ""
-
 #: src/REST/CsvExporter.php:49
-msgid "ID"
-msgstr ""
-
-#: src/REST/CsvExporter.php:50
-#: admin/src/components/LinkEditModal.js:90
-#: admin/src/components/LinkTable.js:205
-#: build/index.js:155
-msgid "URL"
-msgstr ""
-
-#: src/REST/CsvExporter.php:51
-msgid "Final URL"
-msgstr ""
-
-#: src/REST/CsvExporter.php:52
-msgid "HTTP Status"
-msgstr ""
-
-#: src/REST/CsvExporter.php:53
-#: admin/src/components/LinkTable.js:236
-#: build/index.js:155
-msgid "Status"
-msgstr ""
-
-#: src/REST/CsvExporter.php:54
-#: admin/src/components/LinkTable.js:254
-#: build/index.js:155
-msgid "Type"
-msgstr ""
-
-#: src/REST/CsvExporter.php:55
-#: admin/src/components/Dashboard.js:87
-#: build/index.js:5
-msgid "Affiliate"
-msgstr ""
-
-#: src/REST/CsvExporter.php:56
-msgid "Network"
+msgid "Unable to create the CSV export. Please try again."
 msgstr ""
 
 #: src/REST/CsvExporter.php:57
-#: admin/src/components/Dashboard.js:93
-#: build/index.js:5
-msgid "Cloaked"
+msgid "ID"
 msgstr ""
 
 #: src/REST/CsvExporter.php:58
-msgid "Redirect Count"
+#: admin/src/components/LinkEditModal.js:254
+#: admin/src/components/LinkTable.js:161
+msgid "URL"
 msgstr ""
 
 #: src/REST/CsvExporter.php:59
-msgid "Response Time (ms)"
+msgid "Final URL"
 msgstr ""
 
 #: src/REST/CsvExporter.php:60
-msgid "Instances"
+msgid "HTTP Status"
 msgstr ""
 
 #: src/REST/CsvExporter.php:61
-#: admin/src/components/LinkTable.js:276
-#: build/index.js:155
-msgid "Last Checked"
+#: admin/src/components/LinkTable.js:194
+msgid "Status"
 msgstr ""
 
 #: src/REST/CsvExporter.php:62
+#: admin/src/components/LinkTable.js:212
+msgid "Type"
+msgstr ""
+
+#: src/REST/CsvExporter.php:63
+#: admin/src/components/Dashboard.js:134
+#: admin/src/components/LinkTable.js:234
+msgid "Affiliate"
+msgstr ""
+
+#: src/REST/CsvExporter.php:64
+msgid "Network"
+msgstr ""
+
+#: src/REST/CsvExporter.php:65
+#: admin/src/components/Dashboard.js:141
+msgid "Cloaked"
+msgstr ""
+
+#: src/REST/CsvExporter.php:66
+msgid "Redirect Count"
+msgstr ""
+
+#: src/REST/CsvExporter.php:67
+msgid "Response Time (ms)"
+msgstr ""
+
+#: src/REST/CsvExporter.php:68
+msgid "Instances"
+msgstr ""
+
+#: src/REST/CsvExporter.php:69
+#: admin/src/components/LinkTable.js:254
+msgid "Last Checked"
+msgstr ""
+
+#: src/REST/CsvExporter.php:70
 msgid "Last Error"
 msgstr ""
 
@@ -206,31 +197,74 @@ msgstr ""
 msgid "no"
 msgstr ""
 
-#: src/REST/LinksController.php:263
-#: src/REST/LinksController.php:290
-#: src/REST/LinksController.php:369
-#: src/REST/LinksController.php:444
+#: src/REST/CsvExporter.php:104
+msgid "Unable to read the CSV export. Please try again."
+msgstr ""
+
+#: src/REST/CsvExporter.php:164
+msgid "Unable to write the CSV export. Please try again."
+msgstr ""
+
+#: src/REST/LinksController.php:264
+#: src/REST/LinksController.php:291
+#: src/REST/LinksController.php:336
+#: src/REST/LinksController.php:374
+#: src/REST/LinksController.php:408
 msgid "Link not found."
 msgstr ""
 
-#: src/REST/LinksController.php:301
+#: src/REST/LinksController.php:302
 msgid "Provide at least url or rel to update."
 msgstr ""
 
-#: src/REST/LinksController.php:467
+#: src/REST/LinksController.php:308
+msgid "Use an HTTP(S) URL or a site-relative path."
+msgstr ""
+
+#: src/REST/LinksController.php:366
+msgid "Choose an action and between 1 and 100 links."
+msgstr ""
+
+#: src/REST/LinksController.php:378
+#: src/REST/LinksController.php:414
+msgid "Could not schedule the link check. Try again."
+msgstr ""
+
+#: src/REST/LinksController.php:421
 msgid "Link queued for re-checking."
+msgstr ""
+
+#: src/REST/LinksController.php:463
+msgid "CSV exports do not support JSON field projection or envelopes."
+msgstr ""
+
+#: src/REST/LinksController.php:633
+msgid "Edit this source in WordPress and rescan before applying a global change."
+msgstr ""
+
+#: src/REST/LinksController.php:635
+msgid "You do not have permission to edit this post."
+msgstr ""
+
+#: src/REST/LinksController.php:637
+msgid "Enable WordPress revisions for this post type to make global edits recoverable."
 msgstr ""
 
 #: src/REST/ScanController.php:169
 msgid "Please wait a few seconds before trying again."
 msgstr ""
 
-#: src/REST/ScanController.php:200
+#: src/REST/ScanController.php:201
+#: src/REST/ScanController.php:329
 msgid "A scan is already in progress."
 msgstr ""
 
-#: src/REST/ScanController.php:266
+#: src/REST/ScanController.php:265
 msgid "Scan cannot be resumed. It may have already finished or was never started."
+msgstr ""
+
+#: src/REST/ScanController.php:329
+msgid "The scan operation could not be completed. Please retry or check the server logs."
 msgstr ""
 
 #: src/REST/SettingsController.php:123
@@ -253,466 +287,596 @@ msgstr ""
 msgid "excluded_urls must be an array."
 msgstr ""
 
-#: src/REST/SettingsController.php:171
+#: src/REST/SettingsController.php:162
+msgid "Use at most 500 URL exclusion patterns."
+msgstr ""
+
+#: src/REST/SettingsController.php:166
+msgid "Each URL exclusion pattern must be at most 2048 bytes."
+msgstr ""
+
+#: src/REST/SettingsController.php:180
 msgid "http_request_delay must be between 0 and 5000."
 msgstr ""
 
-#: src/REST/SettingsController.php:184
+#: src/REST/SettingsController.php:193
 msgid "density must be comfortable, balanced, or compact."
 msgstr ""
 
-#: admin/src/App.js:21
-#: build/index.js:155
-msgid "Dashboard"
-msgstr ""
-
-#: admin/src/App.js:22
-#: build/index.js:155
-msgid "Links"
+#: src/REST/SettingsController.php:208
+msgid "The settings could not be saved. Please retry."
 msgstr ""
 
 #: admin/src/App.js:23
-#: build/index.js:155
+msgid "Dashboard"
+msgstr ""
+
+#: admin/src/App.js:24
+msgid "Links"
+msgstr ""
+
+#: admin/src/App.js:25
 msgid "Settings"
 msgstr ""
 
+#: admin/src/App.js:83
+msgid "Link tracker sections"
+msgstr ""
+
+#: admin/src/App.js:121
+msgid "Discard unsaved settings?"
+msgstr ""
+
+#: admin/src/App.js:128
+msgid "Your changes have not been saved."
+msgstr ""
+
+#: admin/src/App.js:137
+#: admin/src/components/LinkEditModal.js:474
+msgid "Keep editing"
+msgstr ""
+
+#: admin/src/App.js:148
+#: admin/src/components/LinkEditModal.js:470
+#: admin/src/components/SettingsPanel.js:351
+msgid "Discard changes"
+msgstr ""
+
 #: admin/src/components/BulkActions.js:23
-#: build/index.js:155
-msgid "Edit"
+msgid "Details & edit"
 msgstr ""
 
 #: admin/src/components/BulkActions.js:34
-#: build/index.js:155
 msgid "Recheck"
 msgstr ""
 
 #: admin/src/components/BulkActions.js:40
-#: build/index.js:155
-msgid "Delete"
+msgid "Remove from content"
 msgstr ""
 
-#: admin/src/components/Dashboard.js:27
-#: build/index.js:5
+#: admin/src/components/Dashboard.js:72
 msgid "Total Links"
 msgstr ""
 
-#: admin/src/components/Dashboard.js:33
-#: build/index.js:5
+#: admin/src/components/Dashboard.js:79
 msgid "OK Links"
 msgstr ""
 
-#: admin/src/components/Dashboard.js:39
+#: admin/src/components/Dashboard.js:86
 #: admin/src/components/FilterBar.js:14
-#: build/index.js:5
-#: build/index.js:155
 msgid "Redirects"
 msgstr ""
 
-#: admin/src/components/Dashboard.js:51
-#: build/index.js:5
+#: admin/src/components/Dashboard.js:99
 msgid "Errors"
 msgstr ""
 
-#: admin/src/components/Dashboard.js:64
-#: build/index.js:5
+#: admin/src/components/Dashboard.js:108
 msgid "Checked"
 msgstr ""
 
-#: admin/src/components/Dashboard.js:75
-#: admin/src/components/LinkTable.js:262
-#: admin/src/components/LinkTable.js:270
+#: admin/src/components/Dashboard.js:120
+#: admin/src/components/LinkTable.js:220
+#: admin/src/components/LinkTable.js:228
 #: admin/src/utils/constants.js:35
-#: build/index.js:2
-#: build/index.js:5
-#: build/index.js:155
 msgid "Internal"
 msgstr ""
 
-#: admin/src/components/Dashboard.js:81
-#: admin/src/components/LinkTable.js:258
-#: admin/src/components/LinkTable.js:269
+#: admin/src/components/Dashboard.js:127
+#: admin/src/components/LinkTable.js:216
+#: admin/src/components/LinkTable.js:227
 #: admin/src/utils/constants.js:34
-#: build/index.js:2
-#: build/index.js:5
-#: build/index.js:155
 msgid "External"
 msgstr ""
 
-#: admin/src/components/Dashboard.js:114
-#: build/index.js:5
+#: admin/src/components/Dashboard.js:159
+msgid "Unknown network"
+msgstr ""
+
+#: admin/src/components/Dashboard.js:169
 msgid "Single (1 hop)"
 msgstr ""
 
-#: admin/src/components/Dashboard.js:120
-#: build/index.js:5
+#: admin/src/components/Dashboard.js:175
 msgid "Chains (2+)"
 msgstr ""
 
-#: admin/src/components/Dashboard.js:126
-#: build/index.js:5
+#: admin/src/components/Dashboard.js:181
 msgid "Loops"
 msgstr ""
 
-#: admin/src/components/Dashboard.js:156
-#: build/index.js:5
+#: admin/src/components/Dashboard.js:196
+msgid "The figures below may be out of date."
+msgstr ""
+
+#: admin/src/components/Dashboard.js:207
+msgid "Retry statistics"
+msgstr ""
+
+#: admin/src/components/Dashboard.js:218
 msgid "Link Types"
 msgstr ""
 
-#: admin/src/components/Dashboard.js:178
-#: build/index.js:5
+#: admin/src/components/Dashboard.js:227
 msgid "Affiliate Networks"
 msgstr ""
 
-#: admin/src/components/Dashboard.js:200
-#: build/index.js:5
+#: admin/src/components/Dashboard.js:236
 msgid "Redirections"
 msgstr ""
 
-#: admin/src/components/Dashboard.js:222
-#: build/index.js:5
+#: admin/src/components/Dashboard.js:247
 msgid "Support & Feedback"
 msgstr ""
 
-#: admin/src/components/Dashboard.js:223
-#: build/index.js:5
+#: admin/src/components/Dashboard.js:250
 msgid "Are we missing a feature? Found a bug? Or just want to say thanks?"
 msgstr ""
 
-#: admin/src/components/Dashboard.js:232
-#: build/index.js:5
+#: admin/src/components/Dashboard.js:263
 msgid "Get Support"
 msgstr ""
 
+#: admin/src/components/DataSync.js:58
+msgid "Refresh scan status"
+msgstr ""
+
+#: admin/src/components/DeleteLinksDialog.js:35
+msgid "Unable to load the affected content. Close and try again."
+msgstr ""
+
+#: admin/src/components/DeleteLinksDialog.js:67
+msgid "Some links could not be removed. Close this dialog to review the updated list and try again."
+msgstr ""
+
+#: admin/src/components/DeleteLinksDialog.js:95
+#: admin/src/components/DeleteLinksDialog.js:155
+msgid "Remove links from content"
+msgstr ""
+
+#: admin/src/components/DeleteLinksDialog.js:99
+msgid "This removes the selected links from every affected article, retaining their content. It also removes them from this inventory. This is not an ignore action."
+msgstr ""
+
+#. translators: 1: number of URLs, 2: number of affected articles.
+#: admin/src/components/DeleteLinksDialog.js:115
+#, js-format
+msgid "%1$d URL(s) across %2$d article(s) will be affected."
+msgstr ""
+
+#: admin/src/components/DeleteLinksDialog.js:134
+msgid "Some sources cannot be edited safely here. Open their source articles to remove these links."
+msgstr ""
+
+#: admin/src/components/DeleteLinksDialog.js:146
+#: admin/src/components/LinkEditModal.js:461
+msgid "Cancel"
+msgstr ""
+
 #: admin/src/components/ErrorBoundary.js:44
-#: build/index.js:155
 msgid "Something went wrong."
 msgstr ""
 
 #: admin/src/components/ErrorBoundary.js:51
-#: build/index.js:155
 msgid "An unexpected error occurred in the plugin interface. Please try reloading."
 msgstr ""
 
 #: admin/src/components/ErrorBoundary.js:59
-#: build/index.js:155
 msgid "Error details"
 msgstr ""
 
 #: admin/src/components/ErrorBoundary.js:78
-#: build/index.js:155
 msgid "Try Again"
 msgstr ""
 
-#. translators: 1: Current page number, 2: Total number of pages.
 #: admin/src/components/FilterBar.js:12
-#: build/index.js:155
 msgid "All"
 msgstr ""
 
-#: admin/src/components/LinkEditModal.js:82
-#: build/index.js:155
-msgid "Edit Link"
+#: admin/src/components/FilterBar.js:23
+msgid "Filter links by status"
 msgstr ""
 
-#: admin/src/components/LinkEditModal.js:96
-#: build/index.js:155
-msgid "Rel attribute"
+#: admin/src/components/LinkEditModal.js:25
+msgid "Post content"
 msgstr ""
 
-#: admin/src/components/LinkEditModal.js:99
-#: build/index.js:155
-msgid "e.g. nofollow sponsored"
+#: admin/src/components/LinkEditModal.js:26
+msgid "Post excerpt"
 msgstr ""
 
-#: admin/src/components/LinkEditModal.js:109
-#: build/index.js:155
+#: admin/src/components/LinkEditModal.js:27
+msgid "Custom field"
+msgstr ""
+
+#: admin/src/components/LinkEditModal.js:28
+msgid "Block attribute"
+msgstr ""
+
+#: admin/src/components/LinkEditModal.js:194
+msgid "The link could not be saved. Your changes are still here; please try again."
+msgstr ""
+
+#: admin/src/components/LinkEditModal.js:204
+msgid "The link could not be saved. Please try again."
+msgstr ""
+
+#: admin/src/components/LinkEditModal.js:219
+msgid "Link details and editing"
+msgstr ""
+
+#: admin/src/components/LinkEditModal.js:229
+msgid "Loading link details…"
+msgstr ""
+
+#: admin/src/components/LinkEditModal.js:239
+#: admin/src/components/LinkTable.js:289
+msgid "Retry"
+msgstr ""
+
+#: admin/src/components/LinkEditModal.js:247
+msgid "This link has occurrences that cannot be safely edited here. Use the source page links below to make changes."
+msgstr ""
+
+#: admin/src/components/LinkEditModal.js:261
+msgid "Enter an HTTP(S) URL or a site-relative path such as /page, without spaces or credentials."
+msgstr ""
+
+#: admin/src/components/LinkEditModal.js:265
+msgid "Changing this URL updates its occurrences in published content."
+msgstr ""
+
+#: admin/src/components/LinkEditModal.js:274
+msgid "Mixed rel attributes: occurrences have different tracked values. Original attributes are preserved by default."
+msgstr ""
+
+#: admin/src/components/LinkEditModal.js:278
+msgid "Original rel attributes are preserved unless you choose to harmonize them."
+msgstr ""
+
+#: admin/src/components/LinkEditModal.js:284
+msgid "Harmonize tracked rel attributes across all occurrences"
+msgstr ""
+
+#: admin/src/components/LinkEditModal.js:296
+msgid "Tracked rel attributes"
+msgstr ""
+
+#: admin/src/components/LinkEditModal.js:302
+msgid "Apply the selected nofollow, sponsored and ugc values to every occurrence. Other tokens, such as noopener and noreferrer, are preserved. Uncheck all three to remove only the tracked attributes."
+msgstr ""
+
+#: admin/src/components/LinkEditModal.js:331
+msgid "Last check error:"
+msgstr ""
+
+#: admin/src/components/LinkEditModal.js:342
+msgid "Final destination:"
+msgstr ""
+
+#: admin/src/components/LinkEditModal.js:356
+msgid "Redirect chain"
+msgstr ""
+
+#: admin/src/components/LinkEditModal.js:381
 msgid "Found in:"
 msgstr ""
 
-#: admin/src/components/LinkEditModal.js:141
-#: build/index.js:155
+#. translators: %d: source post ID.
+#: admin/src/components/LinkEditModal.js:392
+#, js-format
+msgid "Post #%d"
+msgstr ""
+
+#: admin/src/components/LinkEditModal.js:403
+msgid "Source:"
+msgstr ""
+
+#: admin/src/components/LinkEditModal.js:411
+msgid "Unknown"
+msgstr ""
+
+#: admin/src/components/LinkEditModal.js:416
+msgid "Tracked rel:"
+msgstr ""
+
+#: admin/src/components/LinkEditModal.js:421
+msgid "None"
+msgstr ""
+
+#: admin/src/components/LinkEditModal.js:429
+msgid "Edit this occurrence in its source page."
+msgstr ""
+
+#: admin/src/components/LinkEditModal.js:454
 msgid "Save"
 msgstr ""
 
-#: admin/src/components/LinkEditModal.js:147
-#: build/index.js:155
-msgid "Cancel"
+#: admin/src/components/LinkEditModal.js:476
+msgid "Discard your unsaved changes to this link?"
 msgstr ""
 
-#: admin/src/components/LinkTable.js:224
-#: build/index.js:155
+#: admin/src/components/LinkTable.js:182
 msgid "HTTP"
 msgstr ""
 
-#: admin/src/components/LinkTable.js:299
-#: build/index.js:155
+#: admin/src/components/LinkTable.js:236
+#: admin/src/components/LinkTable.js:242
+msgid "Yes"
+msgstr ""
+
+#: admin/src/components/LinkTable.js:237
+#: admin/src/components/LinkTable.js:243
+msgid "No"
+msgstr ""
+
+#: admin/src/components/LinkTable.js:247
+msgid "Affiliate network"
+msgstr ""
+
+#: admin/src/components/LinkTable.js:296
+msgid "Rechecks are queued. Results refresh automatically."
+msgstr ""
+
+#: admin/src/components/LinkTable.js:313
+msgid "Clear filters"
+msgstr ""
+
+#: admin/src/components/LinkTable.js:316
+msgid "Refresh"
+msgstr ""
+
+#: admin/src/components/LinkTable.js:319
 msgid "Export CSV"
 msgstr ""
 
-#: admin/src/components/ScanPanel.js:92
-#: build/index.js:2
-msgid "Full Scan"
+#: admin/src/components/ScanPanel.js:81
+msgid "Scan all content"
 msgstr ""
 
-#: admin/src/components/ScanPanel.js:101
-#: build/index.js:2
-msgid "Delta Scan"
+#: admin/src/components/ScanPanel.js:90
+msgid "Scan changed content"
 msgstr ""
 
-#: admin/src/components/ScanPanel.js:110
-#: build/index.js:2
+#: admin/src/components/ScanPanel.js:102
 msgid "Resume Scan"
 msgstr ""
 
-#: admin/src/components/ScanPanel.js:120
-#: build/index.js:2
+#: admin/src/components/ScanPanel.js:112
 msgid "Reset Data"
 msgstr ""
 
-#: admin/src/components/ScanPanel.js:129
-#: build/index.js:2
+#: admin/src/components/ScanPanel.js:123
 msgid "Cancel Scan"
 msgstr ""
 
-#: admin/src/components/ScanPanel.js:135
-#: build/index.js:2
+#: admin/src/components/ScanPanel.js:131
 msgid "Scan progress details"
 msgstr ""
 
 #: admin/src/components/ScanPanel.js:142
-#: build/index.js:2
 msgid "Scan progress"
 msgstr ""
 
 #. translators: 1: checked links, 2: total links, 3: progress percentage.
-#: admin/src/components/ScanPanel.js:153
-#: build/index.js:3
+#: admin/src/components/ScanPanel.js:160
 #, js-format
 msgid "Checking links: %1$d / %2$d (%3$d%%)"
 msgstr ""
 
 #. translators: 1: scanned posts, 2: total posts, 3: progress percentage.
-#: admin/src/components/ScanPanel.js:163
-#: build/index.js:4
+#: admin/src/components/ScanPanel.js:170
 #, js-format
 msgid "Scanning posts: %1$d / %2$d (%3$d%%)"
 msgstr ""
 
 #. translators: 1: total links, 2: ok count, 3: broken count, 4: redirects, 5: errors.
-#: admin/src/components/ScanPanel.js:179
-#: build/index.js:5
+#: admin/src/components/ScanPanel.js:186
 #, js-format
 msgid "Scan complete — %1$d links checked: %2$d OK, %3$d redirects, %4$d broken, %5$d errors."
 msgstr ""
 
-#: admin/src/components/ScanPanel.js:197
-#: build/index.js:5
+#: admin/src/components/ScanPanel.js:203
 msgid "Enjoying the plugin? Please leave a 5-star review!"
 msgstr ""
 
-#: admin/src/components/ScanPanel.js:204
-#: build/index.js:5
+#: admin/src/components/ScanPanel.js:213
 msgid "Delta Scan only checks posts modified since the last successful scan."
 msgstr ""
 
-#: admin/src/components/ScanPanel.js:212
-#: build/index.js:5
+#: admin/src/components/ScanPanel.js:224
 msgid "Are you sure you want to reset all scan data? This will clear all links found so far."
 msgstr ""
 
-#: admin/src/components/SettingsPanel.js:59
-#: build/index.js:155
-msgid "Scanning"
-msgstr ""
-
-#: admin/src/components/SettingsPanel.js:64
-#: build/index.js:155
-msgid "Post types to scan"
-msgstr ""
-
-#: admin/src/components/SettingsPanel.js:80
-#: build/index.js:155
-msgid "Comma-separated list: post, page, product…"
-msgstr ""
-
-#: admin/src/components/SettingsPanel.js:89
-#: build/index.js:155
+#: admin/src/components/SettingsPanel.js:27
 msgid "Batch size"
 msgstr ""
 
-#: admin/src/components/SettingsPanel.js:105
-#: build/index.js:155
-msgid "Scan custom fields"
-msgstr ""
-
-#: admin/src/components/SettingsPanel.js:119
-#: build/index.js:155
-msgid "HTTP Checks"
-msgstr ""
-
-#: admin/src/components/SettingsPanel.js:124
-#: build/index.js:155
+#: admin/src/components/SettingsPanel.js:32
 msgid "Timeout (seconds)"
 msgstr ""
 
-#: admin/src/components/SettingsPanel.js:143
-#: build/index.js:155
+#: admin/src/components/SettingsPanel.js:37
 msgid "Delay between requests (ms)"
 msgstr ""
 
-#: admin/src/components/SettingsPanel.js:162
-#: build/index.js:155
+#: admin/src/components/SettingsPanel.js:42
 msgid "Recheck interval (days)"
 msgstr ""
 
-#: admin/src/components/SettingsPanel.js:182
-#: build/index.js:155
+#. translators: 1: field name, 2: minimum, 3: maximum.
+#: admin/src/components/SettingsPanel.js:150
+#, js-format
+msgid "%1$s must be a whole number between %2$d and %3$d."
+msgstr ""
+
+#: admin/src/components/SettingsPanel.js:201
+msgid "Reload settings"
+msgstr ""
+
+#: admin/src/components/SettingsPanel.js:213
+msgid "Check the highlighted fields before saving."
+msgstr ""
+
+#: admin/src/components/SettingsPanel.js:225
+msgid "Scanning"
+msgstr ""
+
+#: admin/src/components/SettingsPanel.js:230
+msgid "Post types to scan"
+msgstr ""
+
+#: admin/src/components/SettingsPanel.js:238
+msgid "Comma-separated list: post, page, product…"
+msgstr ""
+
+#: admin/src/components/SettingsPanel.js:248
+msgid "Scan custom fields"
+msgstr ""
+
+#: admin/src/components/SettingsPanel.js:252
+msgid "Scan public custom fields (read only)."
+msgstr ""
+
+#: admin/src/components/SettingsPanel.js:265
+msgid "HTTP Checks"
+msgstr ""
+
+#: admin/src/components/SettingsPanel.js:275
 msgid "Exclusions"
 msgstr ""
 
-#: admin/src/components/SettingsPanel.js:187
-#: build/index.js:155
+#: admin/src/components/SettingsPanel.js:280
 msgid "Exclude media files"
 msgstr ""
 
-#: admin/src/components/SettingsPanel.js:195
-#: build/index.js:155
+#: admin/src/components/SettingsPanel.js:288
 msgid "Skip images, videos, and document files (PDF, etc.) during scanning."
 msgstr ""
 
-#: admin/src/components/SettingsPanel.js:204
-#: build/index.js:155
+#: admin/src/components/SettingsPanel.js:297
 msgid "Excluded URLs"
 msgstr ""
 
-#: admin/src/components/SettingsPanel.js:218
-#: build/index.js:155
-msgid "One URL pattern per line."
+#: admin/src/components/SettingsPanel.js:305
+msgid "One exact URL or wildcard pattern (*) per line."
 msgstr ""
 
-#: admin/src/components/SettingsPanel.js:236
-#: build/index.js:155
+#: admin/src/components/SettingsPanel.js:323
 msgid "Save Settings"
 msgstr ""
 
-#: admin/src/store/actions.js:101
-#: build/index.js:1
+#: admin/src/components/SettingsPanel.js:328
+msgid "You have unsaved changes."
+msgstr ""
+
+#: admin/src/components/SettingsPanel.js:340
+msgid "Discard your unsaved settings?"
+msgstr ""
+
+#: admin/src/store/actions.js:55
+msgid "The request failed. Please try again."
+msgstr ""
+
+#: admin/src/store/actions.js:67
+msgid "Invalid scan response. Please refresh the status."
+msgstr ""
+
+#: admin/src/store/actions.js:158
+#: admin/src/store/actions.js:189
+msgid "The scan could not start."
+msgstr ""
+
+#: admin/src/store/actions.js:217
 msgid "Scan started."
 msgstr ""
 
-#: admin/src/store/actions.js:109
-#: build/index.js:1
-msgid "Failed to start scan."
-msgstr ""
-
-#: admin/src/store/actions.js:126
-#: build/index.js:1
+#: admin/src/store/actions.js:223
 msgid "Scan cancelled."
 msgstr ""
 
-#: admin/src/store/actions.js:145
-#: build/index.js:1
+#: admin/src/store/actions.js:229
 msgid "Scan resumed."
 msgstr ""
 
-#: admin/src/store/actions.js:153
-#: build/index.js:1
-msgid "Failed to resume scan."
-msgstr ""
-
-#: admin/src/store/actions.js:173
-#: build/index.js:1
+#: admin/src/store/actions.js:235
 msgid "Scan data reset."
 msgstr ""
 
-#: admin/src/store/actions.js:181
-#: build/index.js:1
-msgid "Failed to reset scan."
-msgstr ""
-
-#: admin/src/store/actions.js:222
-#: build/index.js:1
+#: admin/src/store/actions.js:287
 msgid "Settings saved."
 msgstr ""
 
-#: admin/src/store/actions.js:230
-#: build/index.js:1
-msgid "Failed to save settings."
-msgstr ""
-
-#: admin/src/store/actions.js:246
-#: build/index.js:1
+#: admin/src/store/actions.js:302
 msgid "Link updated."
 msgstr ""
 
-#: admin/src/store/actions.js:255
-#: build/index.js:1
-msgid "Failed to update link."
+#: admin/src/store/actions.js:317
+msgid "Link removed from content."
 msgstr ""
 
-#: admin/src/store/actions.js:270
-#: build/index.js:1
-msgid "Link deleted."
+#: admin/src/store/actions.js:356
+msgid "Recheck scheduled. Results will refresh automatically."
 msgstr ""
 
-#: admin/src/store/actions.js:279
-#: build/index.js:1
-msgid "Failed to delete link."
-msgstr ""
-
-#: admin/src/store/actions.js:294
-#: build/index.js:1
-msgid "Recheck scheduled."
-msgstr ""
-
-#: admin/src/store/actions.js:303
-#: build/index.js:1
-msgid "Failed to schedule recheck."
-msgstr ""
-
-#. translators: %d: number of links processed.
-#: admin/src/store/actions.js:321
-#: build/index.js:2
+#. translators: 1: successful operations, 2: failed operations.
+#: admin/src/store/actions.js:377
 #, js-format
-msgid "%d link(s) processed."
+msgid "%1$d succeeded; %2$d failed."
 msgstr ""
 
-#: admin/src/store/actions.js:332
-#: build/index.js:2
-msgid "Bulk action failed."
+#: admin/src/store/actions.js:464
+msgid "Some checks are still pending or unavailable. Refresh the list to see their latest results."
 msgstr ""
 
 #: admin/src/utils/constants.js:39
-#: build/index.js:2
 msgid "Nofollow"
 msgstr ""
 
 #: admin/src/utils/constants.js:40
-#: build/index.js:2
 msgid "Sponsored"
 msgstr ""
 
 #: admin/src/utils/constants.js:41
-#: build/index.js:2
 msgid "UGC"
 msgstr ""
 
 #: admin/src/utils/constants.js:42
-#: build/index.js:2
 msgid "Dofollow"
 msgstr ""
 
 #: admin/src/utils/constants.js:46
-#: build/index.js:2
 msgid "All Affiliates"
 msgstr ""
 
 #: admin/src/utils/constants.js:49
-#: build/index.js:2
 msgid "Cloaked (Internal)"
 msgstr ""
 
 #: admin/src/utils/constants.js:53
-#: build/index.js:2
 msgid "Direct (External)"
+msgstr ""
+
+#: admin/src/utils/export.js:10
+msgid "Export is unavailable. Reload this page and try again."
 msgstr ""

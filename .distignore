@@ -1,6 +1,7 @@
 # Development files
 .git
 .gitignore
+.github/
 .distignore
 .DS_Store
 .phpunit.result.cache
